@@ -89,7 +89,7 @@ class SkillHubAPITester:
             
             if response.status_code == 200:
                 data = response.json()
-                if isinstance(data, list) and len(data) == 8:
+                if isinstance(data, list) and len(data) == 10:
                     # Check if categories have required fields
                     valid_categories = all(
                         isinstance(cat, dict) and 
@@ -99,12 +99,12 @@ class SkillHubAPITester:
                     if valid_categories:
                         category_names = [cat["name"] for cat in data]
                         self.log_result("Service Categories", True, 
-                                      f"Found {len(data)} categories: {', '.join(category_names)}", data)
+                                      f"Found {len(data)} categories: {', '.join(category_names[:5])}...", data)
                     else:
                         self.log_result("Service Categories", False, "Categories missing required fields", data)
                 else:
                     self.log_result("Service Categories", False, 
-                                  f"Expected 8 categories, got {len(data) if isinstance(data, list) else 'non-list'}", data)
+                                  f"Expected 10 categories, got {len(data) if isinstance(data, list) else 'non-list'}", data)
             else:
                 self.log_result("Service Categories", False, f"Status: {response.status_code}, Response: {response.text}")
                 
