@@ -228,6 +228,38 @@ class SkillHubAPITester:
         except Exception as e:
             self.log_result("Create Booking (Auth)", False, f"Request failed: {str(e)}")
     
+    def test_fallback_system(self):
+        """Test that the fallback system provides seamless experience"""
+        try:
+            # Test multiple endpoints to verify fallback consistency
+            endpoints_to_test = [
+                ("/health", "Health Check Fallback"),
+                ("/service-categories", "Service Categories Fallback"), 
+                ("/profiles/fallback-test-user", "Profile Fallback")
+            ]
+            
+            fallback_working = True
+            fallback_details = []
+            
+            for endpoint, test_name in endpoints_to_test:
+                response = requests.get(f"{API_BASE}{endpoint}", timeout=10)
+                if response.status_code == 200:
+                    data = response.json()
+                    fallback_details.append(f"{test_name}: ✅ Status 200")
+                else:
+                    fallback_working = False
+                    fallback_details.append(f"{test_name}: ❌ Status {response.status_code}")
+            
+            if fallback_working:
+                self.log_result("Fallback System", True, 
+                              f"All endpoints working in fallback mode. {'; '.join(fallback_details)}")
+            else:
+                self.log_result("Fallback System", False, 
+                              f"Some endpoints failing in fallback mode. {'; '.join(fallback_details)}")
+                
+        except Exception as e:
+            self.log_result("Fallback System", False, f"Fallback system test failed: {str(e)}")
+    
     def run_all_tests(self):
         """Run all API tests"""
         print(f"🚀 Starting SkillHub API Tests")
