@@ -310,12 +310,9 @@ metadata:
 test_plan:
   current_focus:
     - "Authentication Flow"
-    - "Customer Dashboard Design"
-    - "Tasker Dashboard Design"
-    - "TaskCard Component Animations"
-    - "Mobile Responsiveness"
   stuck_tasks:
     - "User Profile Endpoint"
+    - "Authentication Flow"
   test_all: false
   test_priority: "high_first"
 
