@@ -128,6 +128,9 @@ backend:
         - working: true
           agent: "testing"
           comment: "GET /api/health endpoint working correctly. Returns health status with Supabase connection info. Status: healthy, Supabase: disconnected (expected as profiles table doesn't exist yet)"
+        - working: true
+          agent: "testing"
+          comment: "Updated: GET /api/health endpoint working perfectly with new fallback system format. Returns: {'status': 'healthy', 'timestamp': '...', 'supabase': 'fallback_mode', 'version': '1.0.0'}. Fallback system provides seamless experience when Supabase is unavailable."
 
   - task: "Service Categories Endpoint"
     implemented: true
