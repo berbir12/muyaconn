@@ -200,11 +200,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       })
       
       if (error) {
-        // If network error, try offline mode
+        // If network error, switch to offline mode and authenticate locally
         if (error.message.includes('Network') || error.message.includes('fetch')) {
-          console.log('Network error during sign in, trying offline mode')
+          console.log('Network error during sign in, switching to offline mode')
           setIsOfflineMode(true)
-          await signIn(email, password) // Retry with offline mode
+          
+          // Authenticate with mock users directly
+          const mockUser = MOCK_USERS.find(u => u.email === email && u.password === password)
+          if (!mockUser) {
+            throw new Error('Invalid email or password')
+          }
+          
+          setProfile(mockUser.profile)
+          
+          // Store session for persistence
+          await AsyncStorage.setItem('offline_session', JSON.stringify({
+            profile: mockUser.profile,
+            timestamp: Date.now()
+          }))
+          
+          setLoading(false)
           return
         }
         throw error
@@ -212,9 +227,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (error: any) {
       setLoading(false)
       
-      // If it's a network error, provide helpful message
-      if (error.message.includes('Network') || error.message.includes('fetch')) {
-        throw new Error('Network connection failed. Try: customer@demo.com / demo123 or tasker@demo.com / demo123')
+      // If it's a network error, switch to offline mode and try mock authentication
+      if (error.message.includes('Network') || error.message.includes('fetch') || error.message.includes('ERR_NAME_NOT_RESOLVED')) {
+        console.log('Network error caught, switching to offline mode')
+        setIsOfflineMode(true)
+        
+        // Try mock authentication
+        const mockUser = MOCK_USERS.find(u => u.email === email && u.password === password)
+        if (!mockUser) {
+          throw new Error('Network connection failed. Please use demo credentials: customer@demo.com / demo123 or tasker@demo.com / demo123')
+        }
+        
+        setProfile(mockUser.profile)
+        
+        // Store session for persistence
+        await AsyncStorage.setItem('offline_session', JSON.stringify({
+          profile: mockUser.profile,
+          timestamp: Date.now()
+        }))
+        
+        setLoading(false)
+        return
       }
       
       throw error
