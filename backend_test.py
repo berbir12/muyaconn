@@ -271,6 +271,7 @@ class SkillHubAPITester:
         self.test_health_check()
         self.test_service_categories()
         self.test_get_profile()
+        self.test_fallback_system()
         self.test_get_bookings_unauthenticated()
         self.test_get_bookings_authenticated()
         self.test_create_booking_unauthenticated()
