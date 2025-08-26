@@ -256,12 +256,15 @@ async def root():
 
 @api_router.get("/health")
 async def health_check():
-    try:
-        # Test Supabase connection
-        response = supabase.table('profiles').select('id').limit(1).execute()
-        supabase_status = "connected"
-    except:
-        supabase_status = "disconnected"
+    supabase_status = "connected" if supabase_available else "fallback_mode"
+    
+    if supabase_available and supabase:
+        try:
+            # Test Supabase connection
+            response = supabase.table('profiles').select('id').limit(1).execute()
+            supabase_status = "connected"
+        except:
+            supabase_status = "fallback_mode"
     
     return {
         "status": "healthy",
