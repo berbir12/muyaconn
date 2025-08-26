@@ -215,3 +215,5 @@ test_plan:
 agent_communication:
     - agent: "testing"
       message: "Completed comprehensive backend API testing. 7 out of 8 tests passed (87.5% success rate). Only issue is profiles endpoint failing due to missing Supabase table. All authentication, booking creation, service categories, and health checks working correctly. API is production-ready except for profiles table setup."
+    - agent: "testing"
+      message: "Updated testing results: 7 out of 8 tests passed (87.5% success rate). Service categories endpoint now returns 10 categories instead of 8 (improvement). Only remaining issue is profiles endpoint failing due to Supabase DNS connectivity problem ('[Errno -2] Name or service not known'). All core functionality (auth, bookings, categories, health) working perfectly. Backend is ready to support frontend except for profile features."
