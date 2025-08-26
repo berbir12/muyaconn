@@ -2,18 +2,25 @@ import React, { useEffect, useState } from 'react'
 import {
   View,
   Text,
-  TouchableOpacity,
-  StyleSheet,
   ScrollView,
   Alert,
   RefreshControl,
+  StyleSheet,
+  Animated,
+  Pressable,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
+import { LinearGradient } from 'expo-linear-gradient'
 import { useAuth } from '../contexts/AuthContext'
 import { useTasks } from '../hooks/useTasks'
 import { useCategories } from '../hooks/useCategories'
 import { router } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
+import Button from '../components/ui/Button'
+import Card from '../components/ui/Card'
+import TaskCard from '../components/TaskCard'
+import Colors from '../constants/Colors'
+import { Spacing, BorderRadius, Typography, Shadows, CommonStyles } from '../constants/Design'
 
 export default function Home() {
   const { profile, signOut } = useAuth()
@@ -72,6 +79,27 @@ export default function Home() {
   if (profile?.role === 'customer') {
     return (
       <SafeAreaView style={styles.container}>
+        {/* Header with gradient */}
+        <LinearGradient
+          colors={[Colors.primary[500], Colors.primary[600]]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.headerGradient}
+        >
+          <View style={styles.headerContent}>
+            <View style={styles.greetingSection}>
+              <Text style={styles.greeting}>{greeting}!</Text>
+              <Text style={styles.userName}>{profile?.full_name}</Text>
+              <Text style={styles.roleText}>Ready to get things done?</Text>
+            </View>
+            <Pressable onPress={() => router.push('/profile')} style={styles.profileButton}>
+              <View style={styles.profileAvatar}>
+                <Ionicons name="person" size={24} color={Colors.primary[500]} />
+              </View>
+            </Pressable>
+          </View>
+        </LinearGradient>
+
         <ScrollView 
           style={styles.scrollView} 
           showsVerticalScrollIndicator={false}
@@ -79,113 +107,118 @@ export default function Home() {
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
           }
         >
-          {/* Header */}
-          <View style={styles.header}>
-            <View>
-              <Text style={styles.greeting}>{greeting}!</Text>
-              <Text style={styles.userName}>{profile?.full_name}</Text>
+          {/* Quick Action Cards */}
+          <View style={styles.quickActionsSection}>
+            <Text style={styles.sectionTitle}>Quick Actions</Text>
+            <View style={styles.quickActionsGrid}>
+              <Card 
+                variant="elevated" 
+                onPress={() => router.push('/post-task')}
+                style={styles.actionCard}
+              >
+                <LinearGradient
+                  colors={Colors.gradients.primary}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.actionGradient}
+                >
+                  <Ionicons name="add-circle" size={32} color={Colors.text.inverse} />
+                  <Text style={styles.actionTitle}>Post a Task</Text>
+                  <Text style={styles.actionSubtitle}>Get help with anything</Text>
+                </LinearGradient>
+              </Card>
+
+              <Card 
+                variant="elevated" 
+                onPress={() => router.push('/my-tasks')}
+                style={styles.actionCard}
+              >
+                <View style={styles.actionContent}>
+                  <Ionicons name="list-circle" size={32} color={Colors.success[500]} />
+                  <Text style={[styles.actionTitle, { color: Colors.text.primary }]}>My Tasks</Text>
+                  <Text style={[styles.actionSubtitle, { color: Colors.text.secondary }]}>
+                    {activeTasks} active
+                  </Text>
+                </View>
+              </Card>
             </View>
-            <TouchableOpacity onPress={() => router.push('/profile')} style={styles.profileButton}>
-              <Ionicons name="person-circle" size={32} color="#007AFF" />
-            </TouchableOpacity>
-          </View>
-
-          {/* Quick Actions */}
-          <View style={styles.quickActions}>
-            <TouchableOpacity 
-              style={[styles.actionButton, { backgroundColor: '#007AFF' }]}
-              onPress={() => router.push('/post-task')}
-            >
-              <Ionicons name="add-circle" size={24} color="#fff" />
-              <Text style={styles.actionButtonText}>Post a Task</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity 
-              style={[styles.actionButton, { backgroundColor: '#28a745' }]}
-              onPress={() => router.push('/my-tasks')}
-            >
-              <Ionicons name="list" size={24} color="#fff" />
-              <Text style={styles.actionButtonText}>My Tasks ({activeTasks})</Text>
-            </TouchableOpacity>
           </View>
 
           {/* Popular Categories */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Popular Categories</Text>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Popular Services</Text>
+              <Pressable onPress={() => router.push('/categories')}>
+                <Text style={styles.viewAllText}>View All</Text>
+              </Pressable>
+            </View>
+            
             {categoriesLoading ? (
               <View style={styles.loadingContainer}>
                 <Text style={styles.loadingText}>Loading categories...</Text>
               </View>
             ) : (
               <View style={styles.categoriesGrid}>
-                {categories.slice(0, 6).map((category) => (
-                  <TouchableOpacity
+                {categories.slice(0, 6).map((category, index) => (
+                  <Pressable
                     key={category.id}
-                    style={styles.categoryCard}
+                    style={[
+                      styles.categoryCard,
+                      { backgroundColor: `${category.color}15` }
+                    ]}
                     onPress={() => navigateToCategory(category)}
                   >
                     <View style={[styles.categoryIcon, { backgroundColor: category.color }]}>
-                      <Ionicons name={category.icon as any} size={28} color="#fff" />
+                      <Ionicons name={category.icon as any} size={24} color={Colors.text.inverse} />
                     </View>
                     <Text style={styles.categoryName}>{category.name}</Text>
-                    <Text style={styles.categoryDesc}>{category.description}</Text>
-                  </TouchableOpacity>
+                    <Text style={styles.categoryDesc} numberOfLines={2}>
+                      {category.description}
+                    </Text>
+                  </Pressable>
                 ))}
               </View>
             )}
-            
-            <TouchableOpacity 
-              style={styles.viewAllButton}
-              onPress={() => router.push('/categories')}
-            >
-              <Text style={styles.viewAllText}>View All Categories</Text>
-              <Ionicons name="chevron-forward" size={16} color="#007AFF" />
-            </TouchableOpacity>
           </View>
 
           {/* Recent Tasks */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Recent Tasks</Text>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Recent Tasks</Text>
+              <Pressable onPress={() => router.push('/my-tasks')}>
+                <Text style={styles.viewAllText}>View All</Text>
+              </Pressable>
+            </View>
+            
             {tasksLoading ? (
               <View style={styles.loadingContainer}>
                 <Text style={styles.loadingText}>Loading tasks...</Text>
               </View>
             ) : tasks.length > 0 ? (
-              <View>
+              <View style={styles.tasksContainer}>
                 {tasks.slice(0, 3).map((task) => (
-                  <TouchableOpacity 
-                    key={task.id} 
-                    style={styles.taskCard}
-                    onPress={() => router.push(`/task/${task.id}`)}
-                  >
-                    <View style={styles.taskHeader}>
-                      <Text style={styles.taskTitle}>{task.title}</Text>
-                      <View style={[styles.statusBadge, { backgroundColor: getStatusColor(task.status) }]}>
-                        <Text style={styles.statusText}>{task.status}</Text>
-                      </View>
-                    </View>
-                    <Text style={styles.taskCategory}>{task.task_categories?.name}</Text>
-                    <Text style={styles.taskApplications}>
-                      {task.applications_count || 0} applications
-                    </Text>
-                  </TouchableOpacity>
+                  <TaskCard key={task.id} task={task} />
                 ))}
-                <TouchableOpacity 
-                  style={styles.viewAllButton}
-                  onPress={() => router.push('/my-tasks')}
-                >
-                  <Text style={styles.viewAllText}>View All Tasks</Text>
-                  <Ionicons name="chevron-forward" size={16} color="#007AFF" />
-                </TouchableOpacity>
               </View>
             ) : (
-              <View style={styles.emptyState}>
-                <Ionicons name="time" size={48} color="#ccc" />
-                <Text style={styles.emptyStateText}>No tasks yet</Text>
-                <Text style={styles.emptyStateSubtext}>
-                  Post your first task to get started
-                </Text>
-              </View>
+              <Card style={styles.emptyState}>
+                <View style={styles.emptyStateContent}>
+                  <View style={styles.emptyStateIcon}>
+                    <Ionicons name="time-outline" size={48} color={Colors.neutral[400]} />
+                  </View>
+                  <Text style={styles.emptyStateText}>No tasks yet</Text>
+                  <Text style={styles.emptyStateSubtext}>
+                    Post your first task to get started
+                  </Text>
+                  <Button
+                    title="Post a Task"
+                    onPress={() => router.push('/post-task')}
+                    variant="primary"
+                    gradient
+                    style={{ marginTop: Spacing.lg }}
+                  />
+                </View>
+              </Card>
             )}
           </View>
         </ScrollView>
@@ -196,6 +229,35 @@ export default function Home() {
   // Render Tasker Dashboard
   return (
     <SafeAreaView style={styles.container}>
+      {/* Header with gradient */}
+      <LinearGradient
+        colors={[Colors.success[500], Colors.success[600]]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.headerGradient}
+      >
+        <View style={styles.headerContent}>
+          <View style={styles.greetingSection}>
+            <Text style={styles.greeting}>{greeting}!</Text>
+            <Text style={styles.userName}>{profile?.full_name}</Text>
+            <View style={styles.statusContainer}>
+              <View style={[
+                styles.statusDot, 
+                { backgroundColor: profile?.available ? Colors.success[400] : Colors.error[400] }
+              ]} />
+              <Text style={styles.statusText}>
+                {profile?.available ? 'Available for tasks' : 'Not available'}
+              </Text>
+            </View>
+          </View>
+          <Pressable onPress={() => router.push('/profile')} style={styles.profileButton}>
+            <View style={styles.profileAvatar}>
+              <Ionicons name="person" size={24} color={Colors.success[500]} />
+            </View>
+          </Pressable>
+        </View>
+      </LinearGradient>
+
       <ScrollView 
         style={styles.scrollView} 
         showsVerticalScrollIndicator={false}
@@ -203,61 +265,68 @@ export default function Home() {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
       >
-        {/* Header */}
-        <View style={styles.header}>
-          <View>
-            <Text style={styles.greeting}>{greeting}!</Text>
-            <Text style={styles.userName}>{profile?.full_name}</Text>
-            <View style={styles.statusContainer}>
-              <View style={[styles.statusDot, { backgroundColor: profile?.available ? '#28a745' : '#dc3545' }]} />
-              <Text style={[styles.statusText, { color: profile?.available ? '#28a745' : '#dc3545' }]}>
-                {profile?.available ? 'Available for tasks' : 'Not available'}
-              </Text>
-            </View>
-          </View>
-          <TouchableOpacity onPress={() => router.push('/profile')} style={styles.profileButton}>
-            <Ionicons name="person-circle" size={32} color="#007AFF" />
-          </TouchableOpacity>
-        </View>
-
-        {/* Tasker Stats */}
-        <View style={styles.statsContainer}>
-          <View style={styles.statCard}>
-            <Text style={styles.statValue}>{completedTasks}</Text>
-            <Text style={styles.statLabel}>Tasks Completed</Text>
-          </View>
-          <View style={styles.statCard}>
-            <Text style={styles.statValue}>${totalEarnings.toFixed(0)}</Text>
-            <Text style={styles.statLabel}>Total Earned</Text>
-          </View>
-          <View style={styles.statCard}>
-            <Text style={styles.statValue}>{profile?.average_rating?.toFixed(1) || '0.0'}</Text>
-            <Text style={styles.statLabel}>Rating</Text>
+        {/* Stats Cards */}
+        <View style={styles.statsSection}>
+          <Text style={styles.sectionTitle}>Your Performance</Text>
+          <View style={styles.statsGrid}>
+            <Card variant="gradient" gradient={Colors.gradients.ocean} style={styles.statCard}>
+              <Text style={styles.statValue}>{completedTasks}</Text>
+              <Text style={styles.statLabel}>Completed</Text>
+            </Card>
+            <Card variant="gradient" gradient={Colors.gradients.emerald} style={styles.statCard}>
+              <Text style={styles.statValue}>${totalEarnings.toFixed(0)}</Text>
+              <Text style={styles.statLabel}>Earned</Text>
+            </Card>
+            <Card variant="gradient" gradient={Colors.gradients.sunset} style={styles.statCard}>
+              <Text style={styles.statValue}>{profile?.average_rating?.toFixed(1) || '0.0'}</Text>
+              <Text style={styles.statLabel}>Rating</Text>
+            </Card>
           </View>
         </View>
 
         {/* Quick Actions */}
-        <View style={styles.quickActions}>
-          <TouchableOpacity 
-            style={[styles.actionButton, { backgroundColor: '#007AFF' }]}
-            onPress={() => router.push('/browse-tasks')}
-          >
-            <Ionicons name="search" size={24} color="#fff" />
-            <Text style={styles.actionButtonText}>Browse Tasks</Text>
-          </TouchableOpacity>
+        <View style={styles.quickActionsSection}>
+          <Text style={styles.sectionTitle}>Find Work</Text>
+          <View style={styles.quickActionsGrid}>
+            <Card 
+              variant="elevated" 
+              onPress={() => router.push('/browse-tasks')}
+              style={styles.actionCard}
+            >
+              <LinearGradient
+                colors={Colors.gradients.primary}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.actionGradient}
+              >
+                <Ionicons name="search" size={32} color={Colors.text.inverse} />
+                <Text style={styles.actionTitle}>Browse Tasks</Text>
+                <Text style={styles.actionSubtitle}>Find new opportunities</Text>
+              </LinearGradient>
+            </Card>
 
-          <TouchableOpacity 
-            style={[styles.actionButton, { backgroundColor: '#28a745' }]}
-            onPress={() => router.push('/my-tasks')}
-          >
-            <Ionicons name="calendar" size={24} color="#fff" />
-            <Text style={styles.actionButtonText}>My Tasks ({activeTasks})</Text>
-          </TouchableOpacity>
+            <Card 
+              variant="elevated" 
+              onPress={() => router.push('/my-tasks')}
+              style={styles.actionCard}
+            >
+              <View style={styles.actionContent}>
+                <Ionicons name="calendar" size={32} color={Colors.primary[500]} />
+                <Text style={[styles.actionTitle, { color: Colors.text.primary }]}>My Schedule</Text>
+                <Text style={[styles.actionSubtitle, { color: Colors.text.secondary }]}>
+                  {activeTasks} active tasks
+                </Text>
+              </View>
+            </Card>
+          </View>
         </View>
 
         {/* Available Categories */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Task Categories</Text>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Task Categories</Text>
+          </View>
+          
           {categoriesLoading ? (
             <View style={styles.loadingContainer}>
               <Text style={styles.loadingText}>Loading categories...</Text>
@@ -265,58 +334,62 @@ export default function Home() {
           ) : (
             <View style={styles.categoriesGrid}>
               {categories.slice(0, 4).map((category) => (
-                <TouchableOpacity
+                <Pressable
                   key={category.id}
-                  style={styles.categoryCard}
+                  style={[
+                    styles.categoryCard,
+                    { backgroundColor: `${category.color}15` }
+                  ]}
                   onPress={() => navigateToCategory(category)}
                 >
                   <View style={[styles.categoryIcon, { backgroundColor: category.color }]}>
-                    <Ionicons name={category.icon as any} size={28} color="#fff" />
+                    <Ionicons name={category.icon as any} size={24} color={Colors.text.inverse} />
                   </View>
                   <Text style={styles.categoryName}>{category.name}</Text>
-                  <Text style={styles.categoryDesc}>{category.description}</Text>
-                </TouchableOpacity>
+                  <Text style={styles.categoryDesc} numberOfLines={2}>
+                    {category.description}
+                  </Text>
+                </Pressable>
               ))}
             </View>
           )}
         </View>
 
-        {/* Recent Applications/Tasks */}
+        {/* Recent Activity */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Recent Activity</Text>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Recent Activity</Text>
+          </View>
+          
           {tasksLoading ? (
             <View style={styles.loadingContainer}>
               <Text style={styles.loadingText}>Loading activity...</Text>
             </View>
           ) : tasks.length > 0 ? (
-            <View>
+            <View style={styles.tasksContainer}>
               {tasks.slice(0, 3).map((task) => (
-                <TouchableOpacity 
-                  key={task.id} 
-                  style={styles.taskCard}
-                  onPress={() => router.push(`/task/${task.id}`)}
-                >
-                  <View style={styles.taskHeader}>
-                    <Text style={styles.taskTitle}>{task.title}</Text>
-                    <View style={[styles.statusBadge, { backgroundColor: getStatusColor(task.status) }]}>
-                      <Text style={styles.statusText}>{task.status}</Text>
-                    </View>
-                  </View>
-                  <Text style={styles.taskCategory}>{task.task_categories?.name}</Text>
-                  <Text style={styles.taskBudget}>
-                    ${task.budget_min}-${task.budget_max}
-                  </Text>
-                </TouchableOpacity>
+                <TaskCard key={task.id} task={task} />
               ))}
             </View>
           ) : (
-            <View style={styles.emptyState}>
-              <Ionicons name="briefcase" size={48} color="#ccc" />
-              <Text style={styles.emptyStateText}>No activity yet</Text>
-              <Text style={styles.emptyStateSubtext}>
-                Start browsing tasks to build your reputation
-              </Text>
-            </View>
+            <Card style={styles.emptyState}>
+              <View style={styles.emptyStateContent}>
+                <View style={styles.emptyStateIcon}>
+                  <Ionicons name="briefcase-outline" size={48} color={Colors.neutral[400]} />
+                </View>
+                <Text style={styles.emptyStateText}>No activity yet</Text>
+                <Text style={styles.emptyStateSubtext}>
+                  Start browsing tasks to build your reputation
+                </Text>
+                <Button
+                  title="Browse Tasks"
+                  onPress={() => router.push('/browse-tasks')}
+                  variant="primary"
+                  gradient
+                  style={{ marginTop: Spacing.lg }}
+                />
+              </View>
+            </Card>
           )}
         </View>
       </ScrollView>
@@ -324,244 +397,230 @@ export default function Home() {
   )
 }
 
-const getStatusColor = (status: string) => {
-  switch (status) {
-    case 'posted': return '#007AFF'
-    case 'assigned': return '#ffc107'
-    case 'in_progress': return '#17a2b8'
-    case 'completed': return '#28a745'
-    case 'cancelled': return '#dc3545'
-    default: return '#6c757d'
-  }
-}
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f8f9fa',
+    backgroundColor: Colors.background.secondary,
   },
-  scrollView: {
-    flex: 1,
+  headerGradient: {
+    paddingBottom: Spacing.lg,
   },
-  header: {
+  headerContent: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 20,
-    backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.md,
+  },
+  greetingSection: {
+    flex: 1,
   },
   greeting: {
-    fontSize: 16,
-    color: '#666',
+    fontSize: Typography.fontSize.md,
+    color: Colors.text.inverse,
+    opacity: 0.9,
   },
   userName: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#333',
+    fontSize: Typography.fontSize.xxl,
+    fontWeight: Typography.fontWeight.bold,
+    color: Colors.text.inverse,
     marginTop: 2,
+  },
+  roleText: {
+    fontSize: Typography.fontSize.sm,
+    color: Colors.text.inverse,
+    opacity: 0.8,
+    marginTop: 4,
   },
   statusContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 4,
+    marginTop: Spacing.sm,
   },
   statusDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
-    marginRight: 6,
+    marginRight: Spacing.sm,
   },
   statusText: {
-    fontSize: 14,
-    fontWeight: '500',
+    fontSize: Typography.fontSize.sm,
+    color: Colors.text.inverse,
+    opacity: 0.9,
   },
   profileButton: {
     padding: 4,
   },
-  quickActions: {
-    flexDirection: 'row',
-    padding: 20,
-    gap: 12,
-  },
-  actionButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
+  profileAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: Colors.text.inverse,
     justifyContent: 'center',
-    paddingVertical: 16,
-    paddingHorizontal: 20,
-    borderRadius: 12,
-    gap: 8,
+    alignItems: 'center',
   },
-  actionButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#fff',
+  scrollView: {
+    flex: 1,
+    backgroundColor: Colors.background.secondary,
   },
-  statsContainer: {
+  section: {
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md,
+  },
+  sectionHeader: {
     flexDirection: 'row',
-    paddingHorizontal: 20,
-    paddingBottom: 20,
-    gap: 12,
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: Spacing.lg,
+  },
+  sectionTitle: {
+    ...CommonStyles.heading2,
+    color: Colors.text.primary,
+  },
+  viewAllText: {
+    fontSize: Typography.fontSize.md,
+    color: Colors.primary[500],
+    fontWeight: Typography.fontWeight.semibold,
+  },
+  quickActionsSection: {
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.lg,
+    paddingBottom: Spacing.md,
+  },
+  quickActionsGrid: {
+    flexDirection: 'row',
+    gap: Spacing.md,
+  },
+  actionCard: {
+    flex: 1,
+    height: 120,
+    padding: 0,
+    overflow: 'hidden',
+  },
+  actionGradient: {
+    flex: 1,
+    padding: Spacing.lg,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  actionContent: {
+    flex: 1,
+    padding: Spacing.lg,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: Colors.background.primary,
+  },
+  actionTitle: {
+    fontSize: Typography.fontSize.lg,
+    fontWeight: Typography.fontWeight.bold,
+    color: Colors.text.inverse,
+    marginTop: Spacing.sm,
+    textAlign: 'center',
+  },
+  actionSubtitle: {
+    fontSize: Typography.fontSize.sm,
+    color: Colors.text.inverse,
+    marginTop: Spacing.xs,
+    textAlign: 'center',
+    opacity: 0.9,
+  },
+  statsSection: {
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md,
+  },
+  statsGrid: {
+    flexDirection: 'row',
+    gap: Spacing.md,
   },
   statCard: {
     flex: 1,
-    backgroundColor: '#fff',
-    padding: 16,
-    borderRadius: 12,
+    height: 80,
+    padding: Spacing.lg,
+    justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
-    elevation: 3,
   },
   statValue: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#007AFF',
+    fontSize: Typography.fontSize.xl,
+    fontWeight: Typography.fontWeight.bold,
+    color: Colors.text.inverse,
   },
   statLabel: {
-    fontSize: 12,
-    color: '#666',
-    marginTop: 4,
-    textAlign: 'center',
-  },
-  section: {
-    padding: 20,
-  },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 16,
-  },
-  loadingContainer: {
-    padding: 20,
-    alignItems: 'center',
-  },
-  loadingText: {
-    color: '#666',
+    fontSize: Typography.fontSize.sm,
+    color: Colors.text.inverse,
+    marginTop: Spacing.xs,
+    opacity: 0.9,
   },
   categoriesGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 12,
+    gap: Spacing.md,
   },
   categoryCard: {
     width: '48%',
-    backgroundColor: '#fff',
-    padding: 16,
-    borderRadius: 12,
+    padding: Spacing.lg,
+    borderRadius: BorderRadius.lg,
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
-    elevation: 3,
+    minHeight: 100,
+    ...Shadows.sm,
   },
   categoryIcon: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: 48,
+    height: 48,
+    borderRadius: BorderRadius.md,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: Spacing.md,
   },
   categoryName: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#333',
+    fontSize: Typography.fontSize.md,
+    fontWeight: Typography.fontWeight.semibold,
+    color: Colors.text.primary,
     textAlign: 'center',
-    marginBottom: 4,
+    marginBottom: Spacing.xs,
   },
   categoryDesc: {
-    fontSize: 12,
-    color: '#666',
+    fontSize: Typography.fontSize.sm,
+    color: Colors.text.secondary,
     textAlign: 'center',
-    lineHeight: 16,
+    lineHeight: 18,
   },
-  viewAllButton: {
-    flexDirection: 'row',
+  loadingContainer: {
+    padding: Spacing.xl,
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 12,
-    marginTop: 16,
-    gap: 4,
   },
-  viewAllText: {
-    fontSize: 16,
-    color: '#007AFF',
-    fontWeight: '600',
+  loadingText: {
+    color: Colors.text.secondary,
+    fontSize: Typography.fontSize.md,
   },
-  taskCard: {
-    backgroundColor: '#fff',
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
-    elevation: 3,
-  },
-  taskHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  taskTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#333',
-    flex: 1,
-    marginRight: 12,
-  },
-  statusBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  statusText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#fff',
-    textTransform: 'capitalize',
-  },
-  taskCategory: {
-    fontSize: 14,
-    color: '#007AFF',
-    marginBottom: 4,
-  },
-  taskApplications: {
-    fontSize: 14,
-    color: '#666',
-  },
-  taskBudget: {
-    fontSize: 14,
-    color: '#28a745',
-    fontWeight: '600',
+  tasksContainer: {
+    marginHorizontal: -Spacing.lg,
   },
   emptyState: {
     alignItems: 'center',
-    paddingVertical: 40,
-    backgroundColor: '#fff',
-    borderRadius: 12,
+    padding: Spacing.xxxl,
+  },
+  emptyStateContent: {
+    alignItems: 'center',
+  },
+  emptyStateIcon: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: Colors.neutral[100],
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: Spacing.lg,
   },
   emptyStateText: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#666',
-    marginTop: 16,
+    fontSize: Typography.fontSize.xl,
+    fontWeight: Typography.fontWeight.semibold,
+    color: Colors.text.primary,
+    marginBottom: Spacing.sm,
   },
   emptyStateSubtext: {
-    fontSize: 14,
-    color: '#999',
+    fontSize: Typography.fontSize.md,
+    color: Colors.text.secondary,
     textAlign: 'center',
-    marginTop: 8,
-    paddingHorizontal: 40,
+    lineHeight: 22,
   },
 })
