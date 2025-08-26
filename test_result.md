@@ -288,7 +288,11 @@ metadata:
 
 test_plan:
   current_focus:
-    - "User Profile Endpoint"
+    - "Authentication Flow"
+    - "Customer Dashboard Design"
+    - "Tasker Dashboard Design"
+    - "TaskCard Component Animations"
+    - "Mobile Responsiveness"
   stuck_tasks:
     - "User Profile Endpoint"
   test_all: false
