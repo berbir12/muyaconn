@@ -268,10 +268,9 @@ async def health_check():
     
     return {
         "status": "healthy",
-        "timestamp": datetime.utcnow(),
-        "services": {
-            "supabase": supabase_status
-        }
+        "timestamp": datetime.utcnow().isoformat(),
+        "supabase": supabase_status,
+        "version": "1.0.0"
     }
 
 @api_router.post("/setup-database")
