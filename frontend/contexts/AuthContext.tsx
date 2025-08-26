@@ -190,6 +190,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }))
         
         setLoading(false)
+        console.log('Offline authentication successful for:', mockUser.profile.full_name)
         return
       }
 
@@ -208,6 +209,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           // Authenticate with mock users directly
           const mockUser = MOCK_USERS.find(u => u.email === email && u.password === password)
           if (!mockUser) {
+            setLoading(false)
             throw new Error('Invalid email or password')
           }
           
@@ -220,21 +222,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }))
           
           setLoading(false)
+          console.log('Offline authentication successful for:', mockUser.profile.full_name)
           return
         }
+        setLoading(false)
         throw error
       }
     } catch (error: any) {
-      setLoading(false)
-      
       // If it's a network error, switch to offline mode and try mock authentication
-      if (error.message.includes('Network') || error.message.includes('fetch') || error.message.includes('ERR_NAME_NOT_RESOLVED')) {
+      if (error.message.includes('Network') || error.message.includes('fetch') || error.message.includes('Failed to fetch')) {
         console.log('Network error caught, switching to offline mode')
         setIsOfflineMode(true)
         
         // Try mock authentication
         const mockUser = MOCK_USERS.find(u => u.email === email && u.password === password)
         if (!mockUser) {
+          setLoading(false)
           throw new Error('Network connection failed. Please use demo credentials: customer@demo.com / demo123 or tasker@demo.com / demo123')
         }
         
@@ -247,9 +250,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }))
         
         setLoading(false)
+        console.log('Offline authentication successful for:', mockUser.profile.full_name)
         return
       }
       
+      setLoading(false)
       throw error
     }
   }
