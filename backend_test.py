@@ -113,18 +113,27 @@ class SkillHubAPITester:
             self.log_result("Service Categories", False, f"Request failed: {str(e)}")
     
     def test_get_profile(self):
-        """Test GET /api/profiles/{user_id} - Get user profile"""
+        """Test GET /api/profiles/{user_id} - Get user profile with fallback mock data"""
         test_user_id = "test-user-123"
         try:
             response = requests.get(f"{API_BASE}/profiles/{test_user_id}", timeout=10)
             
-            # This endpoint is expected to fail since no profiles exist yet
-            if response.status_code == 404:
+            if response.status_code == 200:
+                data = response.json()
+                # Check if it's the mock profile with fallback data
+                required_fields = ["id", "full_name", "email", "role", "created_at"]
+                if all(field in data for field in required_fields):
+                    # Check if it's using fallback mock data
+                    is_mock = data.get("email") == "demo@skillhub.app" or "demo" in data.get("full_name", "").lower()
+                    fallback_status = "using fallback mock data" if is_mock else "from database"
+                    self.log_result("Get Profile", True, 
+                                  f"Profile retrieved successfully ({fallback_status}): {data.get('full_name')}", data)
+                else:
+                    missing_fields = [field for field in required_fields if field not in data]
+                    self.log_result("Get Profile", False, f"Missing required fields: {missing_fields}", data)
+            elif response.status_code == 404:
                 self.log_result("Get Profile", True, 
                               f"Expected 404 for non-existent profile: {response.status_code}")
-            elif response.status_code == 200:
-                data = response.json()
-                self.log_result("Get Profile", True, f"Profile found: {data}", data)
             else:
                 self.log_result("Get Profile", False, 
                               f"Unexpected status: {response.status_code}, Response: {response.text}")
