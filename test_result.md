@@ -155,6 +155,9 @@ backend:
         - working: false
           agent: "testing"
           comment: "GET /api/profiles/{user_id} endpoint fails with 500 error. Supabase error: 'Could not find the table public.profiles in the schema cache'. The profiles table needs to be created in Supabase database."
+        - working: false
+          agent: "testing"
+          comment: "Updated: GET /api/profiles/{user_id} endpoint fails with 500 error. DNS resolution error: '[Errno -2] Name or service not known'. This indicates a network connectivity issue with Supabase, not a missing table issue. The Supabase URL may be unreachable or there's a DNS problem."
 
   - task: "Get Bookings Authentication"
     implemented: true
