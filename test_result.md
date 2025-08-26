@@ -140,6 +140,9 @@ backend:
         - working: true
           agent: "testing"
           comment: "GET /api/service-categories endpoint working perfectly. Returns all 8 expected categories with proper structure: Plumbing, Electrical, Cleaning, Photography, IT Support, Carpentry, Gardening, Moving"
+        - working: true
+          agent: "testing"
+          comment: "Updated: GET /api/service-categories endpoint working perfectly. Now returns 10 categories with proper structure: Mounting & Installation, Furniture Assembly, Moving Help, Cleaning, Delivery, Handyman, Electrical, Plumbing, Painting, Yard Work. All categories have required fields (id, name, icon, description)."
 
   - task: "User Profile Endpoint"
     implemented: true
