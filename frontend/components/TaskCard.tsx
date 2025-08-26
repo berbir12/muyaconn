@@ -105,7 +105,10 @@ export default function TaskCard({ task }: TaskCardProps) {
         )}
 
         {/* Header */}
-        <View style={styles.header}>
+        <View style={[
+          styles.header, 
+          { marginTop: task.urgency === 'urgent' ? Spacing.sm : 0 }
+        ]}>
           <View style={styles.titleSection}>
             <Text style={styles.title} numberOfLines={2}>{task.title}</Text>
             <View style={styles.badgeRow}>
