@@ -15,17 +15,154 @@ import jwt
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
-# Supabase configuration
-SUPABASE_URL = os.environ.get('SUPABASE_URL')
-SUPABASE_ANON_KEY = os.environ.get('SUPABASE_ANON_KEY')
+# Initialize Supabase client with fallback handling
+supabase_url = os.environ.get('SUPABASE_URL')
+supabase_key = os.environ.get('SUPABASE_ANON_KEY')
 SUPABASE_SERVICE_ROLE_KEY = os.environ.get('SUPABASE_SERVICE_ROLE_KEY')
 
-if not all([SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY]):
-    raise ValueError("Missing Supabase configuration")
+supabase: Client = None
+supabase_admin: Client = None
+supabase_available = False
 
-# Initialize Supabase clients
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
-supabase_admin: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+if supabase_url and supabase_key:
+    try:
+        supabase = create_client(supabase_url, supabase_key)
+        if SUPABASE_SERVICE_ROLE_KEY:
+            supabase_admin = create_client(supabase_url, SUPABASE_SERVICE_ROLE_KEY)
+        # Test connection with a simple query
+        response = supabase.from_('profiles').select('id').limit(1).execute()
+        supabase_available = True
+        print("✅ Supabase client initialized and connected successfully")
+    except Exception as e:
+        print(f"⚠️ Supabase connection failed: {e}")
+        print("📝 Using fallback mode with mock data")
+        supabase = None
+        supabase_admin = None
+        supabase_available = False
+else:
+    print("⚠️ Supabase credentials not found, using fallback mode")
+    supabase_available = False
+
+# Mock data for when Supabase is unavailable
+MOCK_CATEGORIES = [
+    {
+        "id": "1",
+        "name": "Mounting & Installation",
+        "slug": "mounting-installation",
+        "description": "TV mounting, furniture assembly, and installation services",
+        "icon": "hammer-outline",
+        "color": "#3B82F6",
+        "is_active": True,
+        "sort_order": 1
+    },
+    {
+        "id": "2", 
+        "name": "Furniture Assembly",
+        "slug": "furniture-assembly",
+        "description": "IKEA and furniture assembly services",
+        "icon": "construct-outline",
+        "color": "#10B981",
+        "is_active": True,
+        "sort_order": 2
+    },
+    {
+        "id": "3",
+        "name": "Moving Help",
+        "slug": "moving-help", 
+        "description": "Packing, loading, and moving assistance",
+        "icon": "car-outline",
+        "color": "#F59E0B",
+        "is_active": True,
+        "sort_order": 3
+    },
+    {
+        "id": "4",
+        "name": "Cleaning",
+        "slug": "cleaning",
+        "description": "House cleaning and deep cleaning services", 
+        "icon": "sparkles-outline",
+        "color": "#8B5CF6",
+        "is_active": True,
+        "sort_order": 4
+    },
+    {
+        "id": "5",
+        "name": "Delivery",
+        "slug": "delivery",
+        "description": "Pickup and delivery services",
+        "icon": "bicycle-outline", 
+        "color": "#06B6D4",
+        "is_active": True,
+        "sort_order": 5
+    },
+    {
+        "id": "6",
+        "name": "Handyman",
+        "slug": "handyman",
+        "description": "General repairs and maintenance",
+        "icon": "build-outline",
+        "color": "#84CC16", 
+        "is_active": True,
+        "sort_order": 6
+    },
+    {
+        "id": "7",
+        "name": "Electrical",
+        "slug": "electrical",
+        "description": "Electrical repairs and installations",
+        "icon": "flash-outline",
+        "color": "#EF4444",
+        "is_active": True,
+        "sort_order": 7
+    },
+    {
+        "id": "8",
+        "name": "Plumbing", 
+        "slug": "plumbing",
+        "description": "Plumbing repairs and maintenance",
+        "icon": "water-outline",
+        "color": "#F97316",
+        "is_active": True,
+        "sort_order": 8
+    },
+    {
+        "id": "9",
+        "name": "Painting",
+        "slug": "painting", 
+        "description": "Interior and exterior painting",
+        "icon": "color-palette-outline",
+        "color": "#EC4899",
+        "is_active": True,
+        "sort_order": 9
+    },
+    {
+        "id": "10",
+        "name": "Yard Work",
+        "slug": "yard-work",
+        "description": "Gardening, landscaping, and yard maintenance", 
+        "icon": "leaf-outline",
+        "color": "#22C55E",
+        "is_active": True,
+        "sort_order": 10
+    }
+]
+
+MOCK_PROFILE = {
+    "id": "mock-user-123",
+    "full_name": "Demo User",
+    "username": "demo_user", 
+    "email": "demo@skillhub.app",
+    "phone": "+1234567890",
+    "role": "customer",
+    "avatar_url": None,
+    "bio": "Welcome to SkillHub! This is a demo profile.",
+    "location": "San Francisco, CA",
+    "average_rating": 4.8,
+    "total_reviews": 25,
+    "available": True,
+    "verified": True,
+    "created_at": "2024-01-01T00:00:00Z"
+}
 
 security = HTTPBearer()
 
