@@ -5,19 +5,29 @@ import { router } from 'expo-router'
 import { ActivityIndicator } from 'react-native'
 
 export default function Index() {
-  const { session, loading, profile } = useAuth()
+  const { session, loading, profile, isOfflineMode } = useAuth()
 
   useEffect(() => {
     if (!loading) {
-      if (!session) {
-        router.replace('/auth')
-      } else if (!profile) {
-        router.replace('/setup-profile')
+      // In offline mode, we only need profile to be set
+      if (isOfflineMode) {
+        if (!profile) {
+          router.replace('/auth')
+        } else {
+          router.replace('/home')
+        }
       } else {
-        router.replace('/home')
+        // In online mode, we need both session and profile
+        if (!session) {
+          router.replace('/auth')
+        } else if (!profile) {
+          router.replace('/setup-profile')
+        } else {
+          router.replace('/home')
+        }
       }
     }
-  }, [session, loading, profile])
+  }, [session, loading, profile, isOfflineMode])
 
   if (loading) {
     return (
