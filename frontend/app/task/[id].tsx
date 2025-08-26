@@ -13,7 +13,7 @@ import { Ionicons } from '@expo/vector-icons'
 import { router, useLocalSearchParams } from 'expo-router'
 import { useAuth } from '../../contexts/AuthContext'
 import { supabase } from '../../lib/supabase'
-import { useTaskApplications } from '../../hooks/useTaskApplications'
+import { useTaskApplications } from '../../hooks/useTasks'
 
 interface TaskDetail {
   id: string
