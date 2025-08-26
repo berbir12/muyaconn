@@ -146,6 +146,9 @@ backend:
         - working: true
           agent: "testing"
           comment: "Updated: GET /api/service-categories endpoint working perfectly. Now returns 10 categories with proper structure: Mounting & Installation, Furniture Assembly, Moving Help, Cleaning, Delivery, Handyman, Electrical, Plumbing, Painting, Yard Work. All categories have required fields (id, name, icon, description)."
+        - working: true
+          agent: "testing"
+          comment: "Updated: GET /api/service-categories endpoint working perfectly with fallback system. Returns 10 comprehensive categories with all required fields (id, name, slug, description, icon, color, is_active, sort_order). Fallback mock data provides seamless experience when Supabase is unavailable."
 
   - task: "User Profile Endpoint"
     implemented: true
