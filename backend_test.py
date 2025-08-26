@@ -64,16 +64,17 @@ class SkillHubAPITester:
             self.log_result("API Root", False, f"Request failed: {str(e)}")
     
     def test_health_check(self):
-        """Test GET /api/health - Health check with Supabase connection status"""
+        """Test GET /api/health - Health check with new fallback system format"""
         try:
             response = requests.get(f"{API_BASE}/health", timeout=10)
             
             if response.status_code == 200:
                 data = response.json()
-                if "status" in data and "services" in data:
-                    supabase_status = data.get("services", {}).get("supabase", "unknown")
+                # New format: {"status": "healthy", "timestamp": "...", "supabase": "connected|fallback_mode", "version": "1.0.0"}
+                if "status" in data and "supabase" in data and "version" in data:
+                    supabase_status = data.get("supabase", "unknown")
                     self.log_result("Health Check", True, 
-                                  f"Status: {data.get('status')}, Supabase: {supabase_status}", data)
+                                  f"Status: {data.get('status')}, Supabase: {supabase_status}, Version: {data.get('version')}", data)
                 else:
                     self.log_result("Health Check", False, f"Unexpected response format: {data}", data)
             else:
