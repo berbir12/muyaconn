@@ -11,8 +11,12 @@ import {
   ScrollView,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
+import { LinearGradient } from 'expo-linear-gradient'
+import { Ionicons } from '@expo/vector-icons'
 import { useAuth } from '../contexts/AuthContext'
 import { router } from 'expo-router'
+import Colors from '../constants/Colors'
+import { Spacing, BorderRadius, Typography, Shadows } from '../constants/Design'
 
 export default function Auth() {
   const [isSignUp, setIsSignUp] = useState(false)
@@ -23,7 +27,7 @@ export default function Auth() {
   const [role, setRole] = useState<'customer' | 'tasker'>('customer')
   const [loading, setLoading] = useState(false)
 
-  const { signIn, signUp } = useAuth()
+  const { signIn, signUp, isOfflineMode } = useAuth()
 
   const handleSignIn = async () => {
     if (!email || !password) {
@@ -89,6 +93,16 @@ export default function Auth() {
     }
   }
 
+  const fillDemoCredentials = (userType: 'customer' | 'tasker') => {
+    if (userType === 'customer') {
+      setEmail('customer@demo.com')
+      setPassword('demo123')
+    } else {
+      setEmail('tasker@demo.com')
+      setPassword('demo123')
+    }
+  }
+
   return (
     <SafeAreaView style={styles.container}>
       <KeyboardAvoidingView
@@ -96,51 +110,112 @@ export default function Auth() {
         style={styles.keyboardContainer}
       >
         <ScrollView contentContainerStyle={styles.scrollContainer}>
-          <View style={styles.header}>
-            <Text style={styles.title}>TaskHub</Text>
+          {/* Header with gradient */}
+          <LinearGradient
+            colors={Colors.gradients.primary}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.header}
+          >
+            <Text style={styles.title}>SkillHub</Text>
             <Text style={styles.subtitle}>
               {isSignUp ? 'Create your account' : 'Welcome back'}
             </Text>
-          </View>
+            
+            {/* Connection status */}
+            <View style={styles.statusContainer}>
+              <View style={[
+                styles.statusDot, 
+                { backgroundColor: isOfflineMode ? Colors.warning[500] : Colors.success[500] }
+              ]} />
+              <Text style={styles.statusText}>
+                {isOfflineMode ? 'Demo Mode' : 'Online'}
+              </Text>
+            </View>
+          </LinearGradient>
+
+          {/* Demo credentials section */}
+          {!isSignUp && (
+            <View style={styles.demoSection}>
+              <Text style={styles.demoTitle}>Try Demo Accounts:</Text>
+              <View style={styles.demoButtons}>
+                <TouchableOpacity
+                  style={[styles.demoButton, { backgroundColor: Colors.primary[50] }]}
+                  onPress={() => fillDemoCredentials('customer')}
+                >
+                  <Ionicons name="person" size={20} color={Colors.primary[600]} />
+                  <Text style={[styles.demoButtonText, { color: Colors.primary[600] }]}>
+                    Customer Demo
+                  </Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity
+                  style={[styles.demoButton, { backgroundColor: Colors.success[50] }]}
+                  onPress={() => fillDemoCredentials('tasker')}
+                >
+                  <Ionicons name="hammer" size={20} color={Colors.success[600]} />
+                  <Text style={[styles.demoButtonText, { color: Colors.success[600] }]}>
+                    Tasker Demo
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
 
           <View style={styles.form}>
-            <TextInput
-              style={styles.input}
-              placeholder="Email"
-              value={email}
-              onChangeText={setEmail}
-              keyboardType="email-address"
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
+            <View style={styles.inputContainer}>
+              <Ionicons name="mail" size={20} color={Colors.text.secondary} style={styles.inputIcon} />
+              <TextInput
+                style={styles.input}
+                placeholder="Email"
+                value={email}
+                onChangeText={setEmail}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+                placeholderTextColor={Colors.text.tertiary}
+              />
+            </View>
 
-            <TextInput
-              style={styles.input}
-              placeholder="Password"
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry
-              autoCapitalize="none"
-            />
+            <View style={styles.inputContainer}>
+              <Ionicons name="lock-closed" size={20} color={Colors.text.secondary} style={styles.inputIcon} />
+              <TextInput
+                style={styles.input}
+                placeholder="Password"
+                value={password}
+                onChangeText={setPassword}
+                secureTextEntry
+                autoCapitalize="none"
+                placeholderTextColor={Colors.text.tertiary}
+              />
+            </View>
 
             {isSignUp && (
               <>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Full Name"
-                  value={fullName}
-                  onChangeText={setFullName}
-                  autoCapitalize="words"
-                />
+                <View style={styles.inputContainer}>
+                  <Ionicons name="person" size={20} color={Colors.text.secondary} style={styles.inputIcon} />
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Full Name"
+                    value={fullName}
+                    onChangeText={setFullName}
+                    autoCapitalize="words"
+                    placeholderTextColor={Colors.text.tertiary}
+                  />
+                </View>
 
-                <TextInput
-                  style={styles.input}
-                  placeholder="Username"
-                  value={username}
-                  onChangeText={setUsername}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                />
+                <View style={styles.inputContainer}>
+                  <Ionicons name="at" size={20} color={Colors.text.secondary} style={styles.inputIcon} />
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Username"
+                    value={username}
+                    onChangeText={setUsername}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    placeholderTextColor={Colors.text.tertiary}
+                  />
+                </View>
 
                 <View style={styles.roleContainer}>
                   <Text style={styles.roleLabel}>I want to:</Text>
@@ -152,6 +227,11 @@ export default function Auth() {
                       ]}
                       onPress={() => setRole('customer')}
                     >
+                      <Ionicons 
+                        name="person-circle" 
+                        size={32} 
+                        color={role === 'customer' ? Colors.text.inverse : Colors.primary[500]} 
+                      />
                       <Text
                         style={[
                           styles.roleButtonText,
@@ -175,6 +255,11 @@ export default function Auth() {
                       ]}
                       onPress={() => setRole('tasker')}
                     >
+                      <Ionicons 
+                        name="hammer" 
+                        size={32} 
+                        color={role === 'tasker' ? Colors.text.inverse : Colors.success[500]} 
+                      />
                       <Text
                         style={[
                           styles.roleButtonText,
@@ -200,9 +285,17 @@ export default function Auth() {
               onPress={isSignUp ? handleSignUp : handleSignIn}
               disabled={loading}
             >
-              <Text style={styles.buttonText}>
-                {loading ? 'Loading...' : isSignUp ? 'Create Account' : 'Sign In'}
-              </Text>
+              <LinearGradient
+                colors={loading ? [Colors.neutral[400], Colors.neutral[500]] : Colors.gradients.primary}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.buttonGradient}
+              >
+                {loading && <Ionicons name="refresh" size={20} color={Colors.text.inverse} style={styles.loadingIcon} />}
+                <Text style={styles.buttonText}>
+                  {loading ? 'Loading...' : isSignUp ? 'Create Account' : 'Sign In'}
+                </Text>
+              </LinearGradient>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -225,109 +318,182 @@ export default function Auth() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: Colors.background.secondary,
   },
   keyboardContainer: {
     flex: 1,
   },
   scrollContainer: {
     flexGrow: 1,
-    justifyContent: 'center',
-    padding: 20,
   },
   header: {
     alignItems: 'center',
-    marginBottom: 40,
+    paddingVertical: Spacing.xxxl,
+    paddingHorizontal: Spacing.lg,
+    marginBottom: Spacing.lg,
   },
   title: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: '#007AFF',
-    marginBottom: 8,
+    fontSize: Typography.fontSize.giant,
+    fontWeight: Typography.fontWeight.bold,
+    color: Colors.text.inverse,
+    marginBottom: Spacing.sm,
   },
   subtitle: {
-    fontSize: 16,
-    color: '#666',
+    fontSize: Typography.fontSize.lg,
+    color: Colors.text.inverse,
+    textAlign: 'center',
+    opacity: 0.9,
+  },
+  statusContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: Spacing.md,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderRadius: BorderRadius.lg,
+  },
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginRight: Spacing.sm,
+  },
+  statusText: {
+    fontSize: Typography.fontSize.sm,
+    color: Colors.text.inverse,
+    fontWeight: Typography.fontWeight.medium,
+  },
+  demoSection: {
+    paddingHorizontal: Spacing.lg,
+    marginBottom: Spacing.lg,
+  },
+  demoTitle: {
+    fontSize: Typography.fontSize.md,
+    fontWeight: Typography.fontWeight.semibold,
+    color: Colors.text.primary,
+    marginBottom: Spacing.md,
     textAlign: 'center',
   },
+  demoButtons: {
+    flexDirection: 'row',
+    gap: Spacing.md,
+  },
+  demoButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.lg,
+    borderRadius: BorderRadius.md,
+    gap: Spacing.sm,
+  },
+  demoButtonText: {
+    fontSize: Typography.fontSize.sm,
+    fontWeight: Typography.fontWeight.semibold,
+  },
   form: {
-    width: '100%',
+    paddingHorizontal: Spacing.lg,
+    paddingBottom: Spacing.lg,
+  },
+  inputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.background.primary,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: Colors.border.light,
+    marginBottom: Spacing.lg,
+    paddingHorizontal: Spacing.lg,
+    ...Shadows.sm,
+  },
+  inputIcon: {
+    marginRight: Spacing.md,
   },
   input: {
+    flex: 1,
     height: 50,
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 8,
-    paddingHorizontal: 16,
-    marginBottom: 16,
-    fontSize: 16,
-    backgroundColor: '#f9f9f9',
+    fontSize: Typography.fontSize.md,
+    color: Colors.text.primary,
   },
   roleContainer: {
-    marginBottom: 16,
+    marginBottom: Spacing.lg,
   },
   roleLabel: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 12,
-    color: '#333',
+    fontSize: Typography.fontSize.lg,
+    fontWeight: Typography.fontWeight.semibold,
+    marginBottom: Spacing.lg,
+    color: Colors.text.primary,
+    textAlign: 'center',
   },
   roleButtons: {
-    gap: 12,
+    gap: Spacing.md,
   },
   roleButton: {
-    paddingVertical: 16,
-    paddingHorizontal: 16,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#ddd',
-    backgroundColor: '#f9f9f9',
+    paddingVertical: Spacing.xl,
+    paddingHorizontal: Spacing.lg,
+    borderRadius: BorderRadius.lg,
+    borderWidth: 2,
+    borderColor: Colors.border.light,
+    backgroundColor: Colors.background.primary,
     alignItems: 'center',
+    ...Shadows.sm,
   },
   roleButtonActive: {
-    backgroundColor: '#007AFF',
-    borderColor: '#007AFF',
+    backgroundColor: Colors.primary[500],
+    borderColor: Colors.primary[500],
   },
   roleButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#666',
-    marginBottom: 4,
+    fontSize: Typography.fontSize.lg,
+    fontWeight: Typography.fontWeight.semibold,
+    color: Colors.text.primary,
+    marginTop: Spacing.sm,
+    marginBottom: Spacing.xs,
   },
   roleButtonTextActive: {
-    color: '#fff',
+    color: Colors.text.inverse,
   },
   roleButtonDesc: {
-    fontSize: 14,
-    color: '#999',
+    fontSize: Typography.fontSize.sm,
+    color: Colors.text.secondary,
     textAlign: 'center',
   },
   roleButtonDescActive: {
-    color: '#fff',
+    color: Colors.text.inverse,
     opacity: 0.9,
   },
   button: {
-    height: 50,
-    backgroundColor: '#007AFF',
-    borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 16,
+    borderRadius: BorderRadius.md,
+    marginBottom: Spacing.lg,
+    overflow: 'hidden',
+    ...Shadows.md,
   },
   buttonDisabled: {
     opacity: 0.6,
   },
+  buttonGradient: {
+    height: 56,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.lg,
+  },
+  loadingIcon: {
+    marginRight: Spacing.sm,
+  },
   buttonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
+    color: Colors.text.inverse,
+    fontSize: Typography.fontSize.lg,
+    fontWeight: Typography.fontWeight.semibold,
   },
   switchButton: {
     alignItems: 'center',
-    paddingVertical: 12,
+    paddingVertical: Spacing.lg,
   },
   switchButtonText: {
-    color: '#007AFF',
-    fontSize: 16,
+    color: Colors.primary[500],
+    fontSize: Typography.fontSize.md,
+    fontWeight: Typography.fontWeight.medium,
   },
 })
