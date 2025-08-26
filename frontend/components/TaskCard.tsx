@@ -250,7 +250,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginBottom: Spacing.md,
-    marginTop: task.urgency === 'urgent' ? Spacing.sm : 0,
   },
   titleSection: {
     flex: 1,
