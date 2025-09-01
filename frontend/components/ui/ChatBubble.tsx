@@ -14,8 +14,8 @@ interface Message {
   content: string
   sender_id: string
   created_at: string
-  message_type?: 'text' | 'image' | 'file'
-  read?: boolean
+  message_type: 'text' | 'image' | 'file' | 'system'
+  read_at?: string
 }
 
 interface ChatBubbleProps {
@@ -53,7 +53,7 @@ const ChatBubble: React.FC<ChatBubbleProps> = ({
 
   const getBubbleStyle = () => {
     const baseStyle = {
-      maxWidth: '80%',
+      maxWidth: '80%' as const,
       paddingHorizontal: Spacing.lg,
       paddingVertical: Spacing.md,
       marginVertical: Spacing.xs,
@@ -65,7 +65,7 @@ const ChatBubble: React.FC<ChatBubbleProps> = ({
         ...baseStyle,
         backgroundColor: Colors.primary[500],
         alignSelf: 'flex-end' as const,
-        marginLeft: '20%',
+        marginLeft: 80, // Use number instead of string
         borderBottomRightRadius: isLastInGroup ? BorderRadius.xs : BorderRadius.lg,
       }
     } else {
@@ -73,7 +73,7 @@ const ChatBubble: React.FC<ChatBubbleProps> = ({
         ...baseStyle,
         backgroundColor: Colors.neutral[100],
         alignSelf: 'flex-start' as const,
-        marginRight: '20%',
+        marginRight: 80,
         borderBottomLeftRadius: isLastInGroup ? BorderRadius.xs : BorderRadius.lg,
         ...Shadows.sm,
       }
@@ -128,9 +128,9 @@ const ChatBubble: React.FC<ChatBubbleProps> = ({
           {isCurrentUser && (
             <View style={styles.readIndicator}>
               <Ionicons
-                name={message.read ? "checkmark-done" : "checkmark"}
+                name={message.read_at ? "checkmark-done" : "checkmark"}
                 size={14}
-                color={message.read ? Colors.success[400] : Colors.neutral[300]}
+                color={message.read_at ? Colors.success[400] : Colors.neutral[300]}
               />
             </View>
           )}

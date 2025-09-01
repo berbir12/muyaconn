@@ -77,11 +77,14 @@ export const Colors = {
   
   // Gradient Colors for visual appeal
   gradients: {
-    primary: ['#0E8AFF', '#36A8FF'],
-    success: ['#22C55E', '#4ADE80'],
-    sunset: ['#FF6B6B', '#FF8E8E'],
-    ocean: ['#0E8AFF', '#00C4FF'],
-    emerald: ['#10B981', '#34D399'],
+    primary: ['#007AFF', '#0056CC'] as const,
+    secondary: ['#6C757D', '#495057'] as const,
+    success: ['#28A745', '#1E7E34'] as const,
+    warning: ['#FFC107', '#E0A800'] as const,
+    error: ['#DC3545', '#C82333'] as const,
+    ocean: ['#17A2B8', '#138496'] as const,
+    emerald: ['#20C997', '#1EA085'] as const,
+    sunset: ['#FD7E14', '#E55A00'] as const,
   },
   
   // Category Colors - For different service categories
@@ -117,7 +120,7 @@ export const Colors = {
   text: {
     primary: '#111827',
     secondary: '#6B7280',
-    tertiary: '#9CA3AF',
+    tertiary: '#6B7280', // Darker, more readable color for placeholders
     inverse: '#FFFFFF',
   },
   

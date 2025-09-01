@@ -245,3 +245,5 @@ const styles = StyleSheet.create({
     fontWeight: Typography.fontWeight.medium,
   },
 })
+
+export default MessageInput

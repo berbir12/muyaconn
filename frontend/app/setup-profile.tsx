@@ -14,12 +14,13 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase'
 import { router } from 'expo-router'
+import Colors from '../constants/Colors'
 
 export default function SetupProfile() {
   const { user, refreshProfile } = useAuth()
   const [username, setUsername] = useState('')
   const [fullName, setFullName] = useState('')
-  const [role, setRole] = useState<'customer' | 'technician'>('customer')
+  const [role, setRole] = useState<'customer' | 'tasker'>('customer')
   const [loading, setLoading] = useState(false)
 
   const handleCreateProfile = async () => {
@@ -47,7 +48,7 @@ export default function SetupProfile() {
       if (error) throw error
 
       await refreshProfile()
-      router.replace('/home')
+      router.replace('/')
     } catch (error: any) {
       Alert.alert('Profile Setup Error', error.message)
     } finally {
@@ -73,6 +74,7 @@ export default function SetupProfile() {
             <TextInput
               style={styles.input}
               placeholder="Username"
+              placeholderTextColor={Colors.text.tertiary}
               value={username}
               onChangeText={setUsername}
               autoCapitalize="none"
@@ -82,6 +84,7 @@ export default function SetupProfile() {
             <TextInput
               style={styles.input}
               placeholder="Full Name"
+              placeholderTextColor={Colors.text.tertiary}
               value={fullName}
               onChangeText={setFullName}
               autoCapitalize="words"
@@ -113,17 +116,17 @@ export default function SetupProfile() {
                 <TouchableOpacity
                   style={[
                     styles.roleButton,
-                    role === 'technician' && styles.roleButtonActive,
+                    role === 'tasker' && styles.roleButtonActive,
                   ]}
-                  onPress={() => setRole('technician')}
+                  onPress={() => setRole('tasker')}
                 >
                   <Text
                     style={[
                       styles.roleButtonText,
-                      role === 'technician' && styles.roleButtonTextActive,
+                      role === 'tasker' && styles.roleButtonTextActive,
                     ]}
                   >
-                    Technician
+                    Tasker
                   </Text>
                   <Text style={styles.roleDescription}>
                     Offer your services

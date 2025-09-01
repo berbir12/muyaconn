@@ -13,301 +13,251 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { LinearGradient } from 'expo-linear-gradient'
 import { Ionicons } from '@expo/vector-icons'
-import { useAuth } from '../contexts/AuthContext'
 import { router } from 'expo-router'
+import { useAuth } from '../contexts/AuthContext'
 import Colors from '../constants/Colors'
-import { Spacing, BorderRadius, Typography, Shadows } from '../constants/Design'
+import { Spacing, BorderRadius, Typography } from '../constants/Design'
 
 export default function Auth() {
   const [isSignUp, setIsSignUp] = useState(false)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
   const [fullName, setFullName] = useState('')
   const [username, setUsername] = useState('')
-  const [role, setRole] = useState<'customer' | 'tasker'>('customer')
   const [loading, setLoading] = useState(false)
 
-  const { signIn, signUp, isOfflineMode } = useAuth()
+  const { signIn, signUp } = useAuth()
 
-  const handleSignIn = async () => {
+  const handleAuth = async () => {
     if (!email || !password) {
-      Alert.alert('Error', 'Please fill in all fields')
+      Alert.alert('Error', 'Please fill in all required fields')
       return
     }
 
+    if (isSignUp) {
+      if (!fullName || !username) {
+        Alert.alert('Error', 'Please fill in all required fields')
+        return
+      }
+
+      if (password !== confirmPassword) {
+        Alert.alert('Error', 'Passwords do not match')
+        return
+      }
+
+      if (password.length < 6) {
+        Alert.alert('Error', 'Password must be at least 6 characters')
+        return
+      }
+    }
+
     setLoading(true)
+
     try {
-      await signIn(email, password)
-      // Navigation will be handled by the auth context
+      if (isSignUp) {
+        const result = await signUp(email, password, {
+          full_name: fullName,
+          username,
+        })
+        
+        if (result.success) {
+          Alert.alert('Success', 'Account created successfully! You can now post tasks and hire taskers. Check your email to verify your account.')
+          setIsSignUp(false)
+          // Clear form fields
+          setEmail('')
+          setPassword('')
+          setConfirmPassword('')
+          setFullName('')
+          setUsername('')
+        }
+      } else {
+        await signIn(email, password)
+        // Navigation will be handled by the auth context
+      }
     } catch (error: any) {
-      console.error('Sign in error:', error)
-      Alert.alert('Sign In Error', error.message)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const handleSignUp = async () => {
-    if (!email || !password || !fullName || !username) {
-      Alert.alert('Error', 'Please fill in all fields')
-      return
-    }
-
-    if (password.length < 6) {
-      Alert.alert('Error', 'Password must be at least 6 characters')
-      return
-    }
-
-    // Validate username
-    if (!/^[a-zA-Z0-9_]+$/.test(username)) {
-      Alert.alert('Error', 'Username can only contain letters, numbers, and underscores')
-      return
-    }
-
-    setLoading(true)
-    try {
-      await signUp(email, password, {
-        full_name: fullName,
-        username,
-        role,
-      })
+      console.error('Auth error:', error)
       
-      Alert.alert(
-        'Success!', 
-        'Account created successfully! You can now sign in.',
-        [
-          {
-            text: 'Sign In Now',
-            onPress: () => {
-              setIsSignUp(false)
-              setPassword('')
-            }
-          }
-        ]
-      )
-    } catch (error: any) {
-      console.error('Sign up error:', error)
-      Alert.alert('Sign Up Error', error.message)
+      // Handle specific error cases for better user experience
+      let errorMessage = error.message || 'An error occurred'
+      let errorTitle = isSignUp ? 'Sign Up Error' : 'Sign In Error'
+
+      if (isSignUp) {
+        // Handle specific signup error cases
+        if (error.message?.includes('already registered') || 
+            error.message?.includes('already exists') ||
+            error.message?.includes('duplicate') ||
+            error.code === '23505' || // PostgreSQL unique constraint violation
+            error.code === 'PGRST116') { // Supabase specific error for existing user
+          errorTitle = 'Email Already Registered'
+          errorMessage = 'An account with this email already exists. Please use a different email or try signing in instead.'
+        } else if (error.message?.includes('invalid email') || error.code === 'invalid_email') {
+          errorTitle = 'Invalid Email'
+          errorMessage = 'Please enter a valid email address.'
+        } else if (error.message?.includes('weak password') || error.code === 'weak_password') {
+          errorTitle = 'Weak Password'
+          errorMessage = 'Please choose a stronger password (at least 6 characters).'
+        } else if (error.message?.includes('network') || 
+                   error.message?.includes('connection') ||
+                   error.message?.includes('fetch') ||
+                   error.code === 'NETWORK_ERROR') {
+          errorTitle = 'Connection Error'
+          errorMessage = 'Please check your internet connection and try again.'
+        } else if (error.code === 'USER_DELETED') {
+          errorTitle = 'Account Deleted'
+          errorMessage = 'This account has been deleted. Please contact support if you believe this is an error.'
+        } else if (error.code === 'TOO_MANY_REQUESTS') {
+          errorTitle = 'Too Many Attempts'
+          errorMessage = 'Too many signup attempts. Please wait a few minutes before trying again.'
+        }
+      } else {
+        // Handle specific signin error cases
+        if (error.message?.includes('Invalid login credentials')) {
+          errorTitle = 'Invalid Credentials'
+          errorMessage = 'The email or password you entered is incorrect. Please try again.'
+        } else if (error.message?.includes('Email not confirmed')) {
+          errorTitle = 'Email Not Verified'
+          errorMessage = 'Please check your email and click the verification link before signing in.'
+        } else if (error.message?.includes('network') || 
+                   error.message?.includes('connection') ||
+                   error.message?.includes('fetch') ||
+                   error.code === 'NETWORK_ERROR') {
+          errorTitle = 'Connection Error'
+          errorMessage = 'Please check your internet connection and try again.'
+        } else if (error.code === 'USER_NOT_FOUND') {
+          errorTitle = 'User Not Found'
+          errorMessage = 'No account found with this email. Please check your email or sign up.'
+        } else if (error.code === 'USER_DELETED') {
+          errorTitle = 'Account Deleted'
+          errorMessage = 'This account has been deleted. Please contact support if you believe this is an error.'
+        } else if (error.code === 'TOO_MANY_REQUESTS') {
+          errorTitle = 'Too Many Attempts'
+          errorMessage = 'Too many signin attempts. Please wait a few minutes before trying again.'
+        }
+      }
+      Alert.alert(errorTitle, errorMessage)
     } finally {
       setLoading(false)
     }
   }
 
-  const fillDemoCredentials = (userType: 'customer' | 'tasker') => {
-    if (userType === 'customer') {
-      setEmail('customer@demo.com')
-      setPassword('demo123')
-    } else {
-      setEmail('tasker@demo.com')
-      setPassword('demo123')
-    }
+  const toggleMode = () => {
+    setIsSignUp(!isSignUp)
+    setEmail('')
+    setPassword('')
+    setConfirmPassword('')
+    setFullName('')
+    setUsername('')
   }
 
   return (
     <SafeAreaView style={styles.container}>
+      <LinearGradient
+        colors={[Colors.primary[500], Colors.primary[600]]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.header}
+      >
+        <View style={styles.headerContent}>
+          <Ionicons name="hammer" size={64} color={Colors.text.inverse} />
+          <Text style={styles.appTitle}>Muyacon</Text>
+          <Text style={styles.appSubtitle}>Get things done, connect with experts</Text>
+          
+
+        </View>
+      </LinearGradient>
+
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.keyboardContainer}
+        style={styles.formContainer}
       >
-        <ScrollView contentContainerStyle={styles.scrollContainer}>
-          {/* Header with gradient */}
-          <LinearGradient
-            colors={Colors.gradients.primary}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.header}
-          >
-            <Text style={styles.title}>SkillHub</Text>
-            <Text style={styles.subtitle}>
-              {isSignUp ? 'Create your account' : 'Welcome back'}
-            </Text>
-            
-            {/* Connection status */}
-            <View style={styles.statusContainer}>
-              <View style={[
-                styles.statusDot, 
-                { backgroundColor: isOfflineMode ? Colors.warning[500] : Colors.success[500] }
-              ]} />
-              <Text style={styles.statusText}>
-                {isOfflineMode ? 'Demo Mode' : 'Online'}
-              </Text>
-            </View>
-          </LinearGradient>
-
-          {/* Demo credentials section */}
-          {!isSignUp && (
-            <View style={styles.demoSection}>
-              <Text style={styles.demoTitle}>Try Demo Accounts:</Text>
-              <View style={styles.demoButtons}>
-                <TouchableOpacity
-                  style={[styles.demoButton, { backgroundColor: Colors.primary[50] }]}
-                  onPress={() => fillDemoCredentials('customer')}
-                >
-                  <Ionicons name="person" size={20} color={Colors.primary[600]} />
-                  <Text style={[styles.demoButtonText, { color: Colors.primary[600] }]}>
-                    Customer Demo
-                  </Text>
-                </TouchableOpacity>
-                
-                <TouchableOpacity
-                  style={[styles.demoButton, { backgroundColor: Colors.success[50] }]}
-                  onPress={() => fillDemoCredentials('tasker')}
-                >
-                  <Ionicons name="hammer" size={20} color={Colors.success[600]} />
-                  <Text style={[styles.demoButtonText, { color: Colors.success[600] }]}>
-                    Tasker Demo
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          )}
-
+        <ScrollView showsVerticalScrollIndicator={false}>
           <View style={styles.form}>
-            <View style={styles.inputContainer}>
-              <Ionicons name="mail" size={20} color={Colors.text.secondary} style={styles.inputIcon} />
-              <TextInput
-                style={styles.input}
-                placeholder="Email"
-                value={email}
-                onChangeText={setEmail}
-                keyboardType="email-address"
-                autoCapitalize="none"
-                autoCorrect={false}
-                placeholderTextColor={Colors.text.tertiary}
-              />
-            </View>
+            <Text style={styles.formTitle}>
+              {isSignUp ? 'Create Account' : 'Welcome Back'}
+            </Text>
+                      <Text style={styles.formSubtitle}>
+            {isSignUp ? 'Join our community of customers and taskers' : 'Sign in to continue'}
+          </Text>
 
-            <View style={styles.inputContainer}>
-              <Ionicons name="lock-closed" size={20} color={Colors.text.secondary} style={styles.inputIcon} />
-              <TextInput
-                style={styles.input}
-                placeholder="Password"
-                value={password}
-                onChangeText={setPassword}
-                secureTextEntry
-                autoCapitalize="none"
-                placeholderTextColor={Colors.text.tertiary}
-              />
-            </View>
+
 
             {isSignUp && (
               <>
-                <View style={styles.inputContainer}>
-                  <Ionicons name="person" size={20} color={Colors.text.secondary} style={styles.inputIcon} />
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Full Name"
-                    value={fullName}
-                    onChangeText={setFullName}
-                    autoCapitalize="words"
-                    placeholderTextColor={Colors.text.tertiary}
-                  />
-                </View>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Full Name"
+                  placeholderTextColor={Colors.text.tertiary}
+                  value={fullName}
+                  onChangeText={setFullName}
+                  autoCapitalize="words"
+                />
 
-                <View style={styles.inputContainer}>
-                  <Ionicons name="at" size={20} color={Colors.text.secondary} style={styles.inputIcon} />
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Username"
-                    value={username}
-                    onChangeText={setUsername}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    placeholderTextColor={Colors.text.tertiary}
-                  />
-                </View>
-
-                <View style={styles.roleContainer}>
-                  <Text style={styles.roleLabel}>I want to:</Text>
-                  <View style={styles.roleButtons}>
-                    <TouchableOpacity
-                      style={[
-                        styles.roleButton,
-                        role === 'customer' && styles.roleButtonActive,
-                      ]}
-                      onPress={() => setRole('customer')}
-                    >
-                      <Ionicons 
-                        name="person-circle" 
-                        size={32} 
-                        color={role === 'customer' ? Colors.text.inverse : Colors.primary[500]} 
-                      />
-                      <Text
-                        style={[
-                          styles.roleButtonText,
-                          role === 'customer' && styles.roleButtonTextActive,
-                        ]}
-                      >
-                        Hire Taskers
-                      </Text>
-                      <Text style={[
-                        styles.roleButtonDesc,
-                        role === 'customer' && styles.roleButtonDescActive,
-                      ]}>
-                        Post tasks and hire help
-                      </Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                      style={[
-                        styles.roleButton,
-                        role === 'tasker' && styles.roleButtonActive,
-                      ]}
-                      onPress={() => setRole('tasker')}
-                    >
-                      <Ionicons 
-                        name="hammer" 
-                        size={32} 
-                        color={role === 'tasker' ? Colors.text.inverse : Colors.success[500]} 
-                      />
-                      <Text
-                        style={[
-                          styles.roleButtonText,
-                          role === 'tasker' && styles.roleButtonTextActive,
-                        ]}
-                      >
-                        Work as Tasker
-                      </Text>
-                      <Text style={[
-                        styles.roleButtonDesc,
-                        role === 'tasker' && styles.roleButtonDescActive,
-                      ]}>
-                        Earn money helping others
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Username"
+                  placeholderTextColor={Colors.text.tertiary}
+                  value={username}
+                  onChangeText={setUsername}
+                  autoCapitalize="none"
+                />
               </>
             )}
 
-            <TouchableOpacity
-              style={[styles.button, loading && styles.buttonDisabled]}
-              onPress={isSignUp ? handleSignUp : handleSignIn}
-              disabled={loading}
-            >
-              <LinearGradient
-                colors={loading ? [Colors.neutral[400], Colors.neutral[500]] : Colors.gradients.primary}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-                style={styles.buttonGradient}
-              >
-                {loading && <Ionicons name="refresh" size={20} color={Colors.text.inverse} style={styles.loadingIcon} />}
-                <Text style={styles.buttonText}>
-                  {loading ? 'Loading...' : isSignUp ? 'Create Account' : 'Sign In'}
-                </Text>
-              </LinearGradient>
-            </TouchableOpacity>
+            <TextInput
+              style={styles.input}
+              placeholder="Email"
+              placeholderTextColor={Colors.text.tertiary}
+              value={email}
+              onChangeText={setEmail}
+              keyboardType="email-address"
+              autoCapitalize="none"
+              autoComplete="email"
+            />
+
+            <TextInput
+              style={styles.input}
+              placeholder="Password"
+              placeholderTextColor={Colors.text.tertiary}
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry
+              autoComplete="password"
+            />
+
+            {isSignUp && (
+              <TextInput
+                style={styles.input}
+                placeholder="Confirm Password"
+                placeholderTextColor={Colors.text.tertiary}
+                value={confirmPassword}
+                onChangeText={setConfirmPassword}
+                secureTextEntry
+                autoComplete="password"
+              />
+            )}
 
             <TouchableOpacity
-              style={styles.switchButton}
-              onPress={() => setIsSignUp(!isSignUp)}
+              style={[styles.authButton, loading && styles.authButtonDisabled]}
+              onPress={handleAuth}
+              disabled={loading}
             >
-              <Text style={styles.switchButtonText}>
-                {isSignUp
-                  ? 'Already have an account? Sign In'
-                  : "Don't have an account? Sign Up"}
+              <Text style={styles.authButtonText}>
+                {loading ? 'Please wait...' : (isSignUp ? 'Create Account' : 'Sign In')}
               </Text>
             </TouchableOpacity>
+
+            <TouchableOpacity style={styles.toggleButton} onPress={toggleMode}>
+              <Text style={styles.toggleText}>
+                {isSignUp ? 'Already have an account? Sign In' : "Don't have an account? Sign Up"}
+              </Text>
+            </TouchableOpacity>
+
+            {!isSignUp && (
+              <TouchableOpacity style={styles.forgotPassword}>
+                <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
+              </TouchableOpacity>
+            )}
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -318,182 +268,122 @@ export default function Auth() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.background.secondary,
-  },
-  keyboardContainer: {
-    flex: 1,
-  },
-  scrollContainer: {
-    flexGrow: 1,
+    backgroundColor: Colors.background.primary,
   },
   header: {
-    alignItems: 'center',
     paddingVertical: Spacing.xxxl,
-    paddingHorizontal: Spacing.lg,
-    marginBottom: Spacing.lg,
+    alignItems: 'center',
   },
-  title: {
-    fontSize: Typography.fontSize.giant,
+  headerContent: {
+    alignItems: 'center',
+  },
+  appTitle: {
+    fontSize: 32,
     fontWeight: Typography.fontWeight.bold,
     color: Colors.text.inverse,
-    marginBottom: Spacing.sm,
+    marginTop: Spacing.lg,
   },
-  subtitle: {
-    fontSize: Typography.fontSize.lg,
-    color: Colors.text.inverse,
-    textAlign: 'center',
-    opacity: 0.9,
-  },
-  statusContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: Spacing.md,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
-    borderRadius: BorderRadius.lg,
-  },
-  statusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginRight: Spacing.sm,
-  },
-  statusText: {
-    fontSize: Typography.fontSize.sm,
-    color: Colors.text.inverse,
-    fontWeight: Typography.fontWeight.medium,
-  },
-  demoSection: {
-    paddingHorizontal: Spacing.lg,
-    marginBottom: Spacing.lg,
-  },
-  demoTitle: {
+  appSubtitle: {
     fontSize: Typography.fontSize.md,
-    fontWeight: Typography.fontWeight.semibold,
-    color: Colors.text.primary,
-    marginBottom: Spacing.md,
+    color: Colors.text.inverse,
+    opacity: 0.9,
+    marginTop: Spacing.sm,
     textAlign: 'center',
   },
-  demoButtons: {
-    flexDirection: 'row',
-    gap: Spacing.md,
-  },
-  demoButton: {
+  formContainer: {
     flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: Spacing.md,
-    paddingHorizontal: Spacing.lg,
-    borderRadius: BorderRadius.md,
-    gap: Spacing.sm,
-  },
-  demoButtonText: {
-    fontSize: Typography.fontSize.sm,
-    fontWeight: Typography.fontWeight.semibold,
   },
   form: {
-    paddingHorizontal: Spacing.lg,
-    paddingBottom: Spacing.lg,
+    padding: Spacing.xl,
   },
-  inputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.background.primary,
-    borderRadius: BorderRadius.md,
-    borderWidth: 1,
-    borderColor: Colors.border.light,
-    marginBottom: Spacing.lg,
-    paddingHorizontal: Spacing.lg,
-    ...Shadows.sm,
-  },
-  inputIcon: {
-    marginRight: Spacing.md,
-  },
-  input: {
-    flex: 1,
-    height: 50,
-    fontSize: Typography.fontSize.md,
-    color: Colors.text.primary,
-  },
-  roleContainer: {
-    marginBottom: Spacing.lg,
-  },
-  roleLabel: {
-    fontSize: Typography.fontSize.lg,
-    fontWeight: Typography.fontWeight.semibold,
-    marginBottom: Spacing.lg,
+  formTitle: {
+    fontSize: Typography.fontSize.xxl,
+    fontWeight: Typography.fontWeight.bold,
     color: Colors.text.primary,
     textAlign: 'center',
+    marginBottom: Spacing.sm,
+  },
+  formSubtitle: {
+    fontSize: Typography.fontSize.md,
+    color: Colors.text.secondary,
+    textAlign: 'center',
+    marginBottom: Spacing.xl,
+  },
+  input: {
+    backgroundColor: Colors.background.secondary,
+    borderRadius: BorderRadius.lg,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md,
+    fontSize: Typography.fontSize.md,
+    color: Colors.text.primary,
+    marginBottom: Spacing.md,
+    borderWidth: 1,
+    borderColor: Colors.neutral[200],
+  },
+  roleContainer: {
+    marginBottom: Spacing.md,
+  },
+  roleLabel: {
+    fontSize: Typography.fontSize.md,
+    color: Colors.text.primary,
+    marginBottom: Spacing.sm,
   },
   roleButtons: {
-    gap: Spacing.md,
+    flexDirection: 'row',
+    gap: Spacing.sm,
   },
   roleButton: {
-    paddingVertical: Spacing.xl,
-    paddingHorizontal: Spacing.lg,
-    borderRadius: BorderRadius.lg,
-    borderWidth: 2,
-    borderColor: Colors.border.light,
-    backgroundColor: Colors.background.primary,
+    flex: 1,
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: Colors.neutral[300],
     alignItems: 'center',
-    ...Shadows.sm,
   },
   roleButtonActive: {
     backgroundColor: Colors.primary[500],
     borderColor: Colors.primary[500],
   },
   roleButtonText: {
-    fontSize: Typography.fontSize.lg,
-    fontWeight: Typography.fontWeight.semibold,
-    color: Colors.text.primary,
-    marginTop: Spacing.sm,
-    marginBottom: Spacing.xs,
+    fontSize: Typography.fontSize.sm,
+    color: Colors.text.secondary,
+    fontWeight: Typography.fontWeight.medium,
   },
   roleButtonTextActive: {
     color: Colors.text.inverse,
   },
-  roleButtonDesc: {
-    fontSize: Typography.fontSize.sm,
-    color: Colors.text.secondary,
-    textAlign: 'center',
+  authButton: {
+    backgroundColor: Colors.primary[500],
+    borderRadius: BorderRadius.lg,
+    paddingVertical: Spacing.lg,
+    alignItems: 'center',
+    marginTop: Spacing.md,
   },
-  roleButtonDescActive: {
-    color: Colors.text.inverse,
-    opacity: 0.9,
-  },
-  button: {
-    borderRadius: BorderRadius.md,
-    marginBottom: Spacing.lg,
-    overflow: 'hidden',
-    ...Shadows.md,
-  },
-  buttonDisabled: {
+  authButtonDisabled: {
     opacity: 0.6,
   },
-  buttonGradient: {
-    height: 56,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: Spacing.lg,
-  },
-  loadingIcon: {
-    marginRight: Spacing.sm,
-  },
-  buttonText: {
+  authButtonText: {
     color: Colors.text.inverse,
     fontSize: Typography.fontSize.lg,
     fontWeight: Typography.fontWeight.semibold,
   },
-  switchButton: {
+  toggleButton: {
     alignItems: 'center',
-    paddingVertical: Spacing.lg,
+    marginTop: Spacing.lg,
   },
-  switchButtonText: {
+  toggleText: {
     color: Colors.primary[500],
     fontSize: Typography.fontSize.md,
     fontWeight: Typography.fontWeight.medium,
   },
+  forgotPassword: {
+    alignItems: 'center',
+    marginTop: Spacing.md,
+  },
+  forgotPasswordText: {
+    color: Colors.text.secondary,
+    fontSize: Typography.fontSize.md,
+  },
+
 })

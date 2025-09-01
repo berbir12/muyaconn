@@ -5,6 +5,8 @@ import {
   ViewStyle,
   StyleSheet,
   Pressable,
+  StyleProp,
+  ColorValue,
 } from 'react-native'
 import { LinearGradient } from 'expo-linear-gradient'
 import Colors from '../../constants/Colors'
@@ -14,10 +16,10 @@ export type CardVariant = 'default' | 'elevated' | 'outlined' | 'gradient'
 
 interface CardProps {
   children: React.ReactNode
-  variant?: CardVariant
+  variant?: 'default' | 'elevated' | 'outlined' | 'gradient'
   onPress?: () => void
-  style?: ViewStyle
-  gradient?: string[]
+  style?: StyleProp<ViewStyle>
+  gradient?: readonly [ColorValue, ColorValue, ...ColorValue[]]
   padding?: number
   margin?: number
   disabled?: boolean

@@ -39,6 +39,11 @@ export const Typography = {
       android: 'Roboto-Medium',
       default: 'System',
     }),
+    semibold: Platform.select({
+      ios: 'SF Pro Text',
+      android: 'Roboto-Medium',
+      default: 'System',
+    }),
     bold: Platform.select({
       ios: 'SF Pro Text',
       android: 'Roboto-Bold',

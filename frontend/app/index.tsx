@@ -5,29 +5,25 @@ import { router } from 'expo-router'
 import { ActivityIndicator } from 'react-native'
 
 export default function Index() {
-  const { session, loading, profile, isOfflineMode } = useAuth()
+  const { session, loading, profile } = useAuth()
 
   useEffect(() => {
     if (!loading) {
-      // In offline mode, we only need profile to be set
-      if (isOfflineMode) {
-        if (!profile) {
-          router.replace('/auth')
-        } else {
-          router.replace('/home')
-        }
+      if (!session) {
+        // No user session - redirect to auth
+        router.replace('/auth')
+      } else if (!profile) {
+        // User is authenticated but has no profile
+        // This should not happen with the database trigger, but if it does,
+        // redirect to auth to let them sign in again (which will trigger profile creation)
+        console.warn('User authenticated but no profile found - redirecting to auth')
+        router.replace('/auth')
       } else {
-        // In online mode, we need both session and profile
-        if (!session) {
-          router.replace('/auth')
-        } else if (!profile) {
-          router.replace('/setup-profile')
-        } else {
-          router.replace('/home')
-        }
+        // User is authenticated and has profile - redirect to main app
+        router.replace('/jobs')
       }
     }
-  }, [session, loading, profile, isOfflineMode])
+  }, [session, loading, profile])
 
   if (loading) {
     return (

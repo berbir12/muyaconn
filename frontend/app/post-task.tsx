@@ -16,30 +16,30 @@ import { router, useLocalSearchParams } from 'expo-router'
 import { useAuth } from '../contexts/AuthContext'
 import { useTasks } from '../hooks/useTasks'
 import { useCategories } from '../hooks/useCategories'
+import { supabase } from '../lib/supabase'
+import NotificationButton from '../components/NotificationButton'
+import Colors from '../constants/Colors'
 
 const TASK_SIZES = [
   { 
     id: 'small', 
     label: 'Small', 
     description: '1 hour or less', 
-    budgetMin: 25, 
-    budgetMax: 75,
+    budget: 50,
     example: 'Quick fix, simple assembly'
   },
   { 
     id: 'medium', 
     label: 'Medium', 
     description: '2-4 hours', 
-    budgetMin: 50, 
-    budgetMax: 200,
+    budget: 125,
     example: 'TV mounting, furniture assembly'
   },
   { 
     id: 'large', 
     label: 'Large', 
     description: '4+ hours or multi-day', 
-    budgetMin: 150, 
-    budgetMax: 500,
+    budget: 325,
     example: 'Moving help, deep cleaning'
   },
 ]
@@ -54,14 +54,11 @@ export default function PostTask() {
   const [description, setDescription] = useState('')
   const [selectedCategoryId, setSelectedCategoryId] = useState('')
   const [taskSize, setTaskSize] = useState<'small' | 'medium' | 'large'>('medium')
-  const [budgetMin, setBudgetMin] = useState<number>(50)
-  const [budgetMax, setBudgetMax] = useState<number>(150)
+  const [budget, setBudget] = useState<number>(125)
   const [taskDate, setTaskDate] = useState('')
   const [taskTime, setTaskTime] = useState('')
-  const [address, setAddress] = useState('')
-  const [city, setCity] = useState('')
-  const [state, setState] = useState('')
-  const [zipCode, setZipCode] = useState('')
+  const [specificLocation, setSpecificLocation] = useState('')
+  const [district, setDistrict] = useState('')
   const [urgency, setUrgency] = useState<'flexible' | 'within_week' | 'urgent'>('flexible')
   const [specialInstructions, setSpecialInstructions] = useState('')
   const [loading, setLoading] = useState(false)
@@ -80,40 +77,79 @@ export default function PostTask() {
   useEffect(() => {
     const size = TASK_SIZES.find(s => s.id === taskSize)
     if (size) {
-      setBudgetMin(size.budgetMin)
-      setBudgetMax(size.budgetMax)
+      setBudget(size.budget)
     }
   }, [taskSize])
 
   const handlePostTask = async () => {
-    if (!title || !description || !selectedCategoryId || !address || !city || !state || !zipCode) {
-      Alert.alert('Missing Information', 'Please fill in all required fields')
+    console.log('=== handlePostTask called ===')
+    console.log('User profile:', profile)
+    console.log('Form data:', {
+      title,
+      description,
+      selectedCategoryId,
+      specificLocation,
+      district,
+      taskSize,
+      budget,
+      taskDate,
+      taskTime,
+      urgency,
+      specialInstructions
+    })
+
+    if (!profile) {
+      Alert.alert('Authentication Error', 'Please log in to post a task')
       return
     }
 
-    if (budgetMin >= budgetMax) {
-      Alert.alert('Invalid Budget', 'Maximum budget must be higher than minimum budget')
+          if (!title || !description || !selectedCategoryId || !specificLocation || !district || !taskDate || !taskTime) {
+      Alert.alert('Missing Information', 'Please fill in all required fields including date and time')
+      return
+    }
+
+    if (budget < 0) { // Assuming budget cannot be negative
+      Alert.alert('Invalid Budget', 'Budget cannot be negative')
+      return
+    }
+
+    // Validate date format (required)
+    if (!/^\d{2}\/\d{2}\/\d{4}$/.test(taskDate)) {
+      Alert.alert('Invalid Date Format', 'Please use DD/MM/YYYY format (e.g., 29/08/2025)')
+      return
+    }
+
+    // Validate time format (required)
+    if (!/^\d{2}:\d{2}$/.test(taskTime)) {
+      Alert.alert('Invalid Time Format', 'Please use HH:MM format (e.g., 14:30)')
       return
     }
 
     setLoading(true)
     try {
-      await createTask({
+      console.log('=== About to call createTask ===')
+      const taskData = {
         title,
         description,
         category_id: selectedCategoryId,
-        address,
-        city,
-        state,
-        zip_code: zipCode,
+        address: specificLocation,
+        city: district,
+        state: 'Addis Ababa',
+        zip_code: 'N/A',
         task_size: taskSize,
-        budget_min: budgetMin,
-        budget_max: budgetMax,
-        task_date: taskDate || undefined,
-        task_time: taskTime || undefined,
+        budget: budget,
+        task_date: taskDate,
+        task_time: taskTime,
         urgency,
         special_instructions: specialInstructions || undefined,
-      })
+      }
+      
+      console.log('Task data being sent:', taskData)
+      
+      const result = await createTask(taskData)
+      
+      console.log('=== createTask completed successfully ===')
+      console.log('createTask result:', result)
       
       Alert.alert(
         'Task Posted Successfully!',
@@ -121,7 +157,7 @@ export default function PostTask() {
         [
           {
             text: 'View My Tasks',
-            onPress: () => router.push('/my-tasks')
+            onPress: () => router.push('/jobs')
           },
           {
             text: 'Post Another',
@@ -131,10 +167,9 @@ export default function PostTask() {
               setDescription('')
               setSelectedCategoryId('')
               setTaskSize('medium')
-              setAddress('')
-              setCity('')
-              setState('')
-              setZipCode('')
+              setBudget(125)
+              setSpecificLocation('')
+              setDistrict('')
               setTaskDate('')
               setTaskTime('')
               setUrgency('flexible')
@@ -144,8 +179,11 @@ export default function PostTask() {
         ]
       )
     } catch (error: any) {
-      console.error('Error posting task:', error)
-      Alert.alert('Error', 'Failed to post task. Please try again.')
+      console.error('=== Error in handlePostTask ===')
+      console.error('Error details:', error)
+      console.error('Error message:', error.message)
+      console.error('Error stack:', error.stack)
+      Alert.alert('Error', `Failed to post task: ${error.message}`)
     } finally {
       setLoading(false)
     }
@@ -161,117 +199,88 @@ export default function PostTask() {
           <Ionicons name="arrow-back" size={24} color="#007AFF" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Post a Task</Text>
-        <View style={{ width: 24 }} />
+                <NotificationButton size={24} />
       </View>
 
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.keyboardContainer}
       >
-        <ScrollView style={styles.form} showsVerticalScrollIndicator={false}>
-          {/* Task Title */}
-          <View style={styles.section}>
-            <Text style={styles.label}>What do you need done? *</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="e.g., Mount 55 inch TV above fireplace"
-              value={title}
-              onChangeText={setTitle}
-              maxLength={100}
-            />
-          </View>
-
+        <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
           {/* Category Selection */}
           <View style={styles.section}>
-            <Text style={styles.label}>Category *</Text>
-            {categoriesLoading ? (
-              <Text style={styles.loadingText}>Loading categories...</Text>
-            ) : (
-              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                <View style={styles.categoryContainer}>
-                  {categories.map((cat) => (
-                    <TouchableOpacity
-                      key={cat.id}
-                      style={[
-                        styles.categoryChip,
-                        selectedCategoryId === cat.id && styles.categoryChipSelected,
-                      ]}
-                      onPress={() => setSelectedCategoryId(cat.id)}
-                    >
-                      <View style={[styles.categoryIconSmall, { backgroundColor: cat.color }]}>
-                        <Ionicons name={cat.icon as any} size={16} color="#fff" />
-                      </View>
-                      <Text
-                        style={[
-                          styles.categoryChipText,
-                          selectedCategoryId === cat.id && styles.categoryChipTextSelected,
-                        ]}
-                      >
-                        {cat.name}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </ScrollView>
-            )}
+            <Text style={styles.sectionTitle}>Category</Text>
+            <View style={styles.categoriesContainer}>
+              {categories.map((cat) => (
+                <TouchableOpacity
+                  key={cat.id}
+                  style={[
+                    styles.categoryButton,
+                    selectedCategoryId === cat.id && styles.categoryButtonActive
+                  ]}
+                  onPress={() => setSelectedCategoryId(cat.id)}
+                >
+                  <Ionicons 
+                    name={cat.icon as any} 
+                    size={24} 
+                    color={selectedCategoryId === cat.id ? '#fff' : cat.color} 
+                  />
+                  <Text style={[
+                    styles.categoryButtonText,
+                    selectedCategoryId === cat.id && styles.categoryButtonTextActive
+                  ]}>
+                    {cat.name}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
           </View>
 
-          {/* Task Description */}
+          {/* Task Details */}
           <View style={styles.section}>
-            <Text style={styles.label}>Task Details *</Text>
+            <Text style={styles.sectionTitle}>Task Details</Text>
+            
             <TextInput
-              style={[styles.input, styles.textArea]}
-              placeholder="Describe your task in detail. Include any specifics, materials needed, or special instructions..."
+              style={styles.input}
+              placeholder="Task title"
+              placeholderTextColor={Colors.text.tertiary}
+              value={title}
+              onChangeText={setTitle}
+            />
+            
+            <TextInput
+              style={styles.input}
+              placeholder="Description"
+              placeholderTextColor={Colors.text.tertiary}
               value={description}
               onChangeText={setDescription}
               multiline
-              numberOfLines={5}
+              numberOfLines={4}
               textAlignVertical="top"
-              maxLength={1000}
             />
-            <Text style={styles.characterCount}>
-              {description.length}/1000
-            </Text>
           </View>
 
           {/* Task Size */}
           <View style={styles.section}>
-            <Text style={styles.label}>Task Size *</Text>
-            <Text style={styles.helper}>Help Taskers understand the scope</Text>
-            <View style={styles.taskSizeContainer}>
+            <Text style={styles.sectionTitle}>Task Size</Text>
+            <View style={styles.sizeContainer}>
               {TASK_SIZES.map((size) => (
                 <TouchableOpacity
                   key={size.id}
                   style={[
-                    styles.taskSizeCard,
-                    taskSize === size.id && styles.taskSizeCardSelected,
+                    styles.sizeButton,
+                    taskSize === size.id && styles.sizeButtonActive
                   ]}
-                  onPress={() => setTaskSize(size.id as any)}
+                  onPress={() => setTaskSize(size.id as 'small' | 'medium' | 'large')}
                 >
-                  <Text
-                    style={[
-                      styles.taskSizeLabel,
-                      taskSize === size.id && styles.taskSizeLabelSelected,
-                    ]}
-                  >
+                  <Text style={[
+                    styles.sizeButtonText,
+                    taskSize === size.id && styles.sizeButtonTextActive
+                  ]}>
                     {size.label}
                   </Text>
-                  <Text
-                    style={[
-                      styles.taskSizeDesc,
-                      taskSize === size.id && styles.taskSizeDescSelected,
-                    ]}
-                  >
-                    {size.description}
-                  </Text>
-                  <Text
-                    style={[
-                      styles.taskSizeExample,
-                      taskSize === size.id && styles.taskSizeExampleSelected,
-                    ]}
-                  >
-                    {size.example}
-                  </Text>
+                  <Text style={styles.sizeDescription}>{size.description}</Text>
+                  <Text style={styles.sizeExample}>{size.example}</Text>
                 </TouchableOpacity>
               ))}
             </View>
@@ -279,84 +288,103 @@ export default function PostTask() {
 
           {/* Budget */}
           <View style={styles.section}>
-            <Text style={styles.label}>Budget Range *</Text>
+            <Text style={styles.sectionTitle}>Budget</Text>
             <View style={styles.budgetContainer}>
-              <View style={styles.budgetField}>
-                <Text style={styles.budgetLabel}>Min $</Text>
+              <View style={styles.budgetInput}>
+                <Text style={styles.budgetLabel}>Budget</Text>
                 <TextInput
-                  style={styles.budgetInput}
-                  value={budgetMin.toString()}
-                  onChangeText={(text) => setBudgetMin(parseInt(text) || 0)}
-                  keyboardType="numeric"
+                  style={styles.input}
                   placeholder="0"
+                  placeholderTextColor={Colors.text.tertiary}
+                  value={budget.toString()}
+                  onChangeText={(text) => setBudget(parseInt(text) || 0)}
+                  keyboardType="numeric"
                 />
               </View>
-              <Text style={styles.budgetSeparator}>to</Text>
-              <View style={styles.budgetField}>
-                <Text style={styles.budgetLabel}>Max $</Text>
-                <TextInput
-                  style={styles.budgetInput}
-                  value={budgetMax.toString()}
-                  onChangeText={(text) => setBudgetMax(parseInt(text) || 0)}
-                  keyboardType="numeric"
-                  placeholder="0"
-                />
-              </View>
-            </View>
-          </View>
-
-          {/* Location */}
-          <View style={styles.section}>
-            <Text style={styles.label}>Location *</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Street address"
-              value={address}
-              onChangeText={setAddress}
-            />
-            <View style={styles.locationRow}>
-              <TextInput
-                style={[styles.input, { flex: 2, marginRight: 8 }]}
-                placeholder="City"
-                value={city}
-                onChangeText={setCity}
-              />
-              <TextInput
-                style={[styles.input, { flex: 1, marginRight: 8 }]}
-                placeholder="State"
-                value={state}
-                onChangeText={setState}
-              />
-              <TextInput
-                style={[styles.input, { flex: 1 }]}
-                placeholder="Zip"
-                value={zipCode}
-                onChangeText={setZipCode}
-                keyboardType="numeric"
-              />
             </View>
           </View>
 
           {/* Date & Time */}
           <View style={styles.section}>
-            <Text style={styles.label}>When do you need this done?</Text>
+            <Text style={styles.sectionTitle}>Date & Time *</Text>
             <View style={styles.dateTimeContainer}>
-              <View style={styles.dateTimeField}>
-                <Text style={styles.dateTimeLabel}>Date (Optional)</Text>
-                <TouchableOpacity style={styles.dateTimeInput}>
-                  <Text style={styles.dateTimeText}>
-                    {taskDate || 'Flexible'}
+              <TextInput
+                style={styles.input}
+                placeholder="Date (DD/MM/YYYY) *"
+                placeholderTextColor={Colors.text.tertiary}
+                value={taskDate}
+                onChangeText={setTaskDate}
+              />
+              <TextInput
+                style={styles.input}
+                placeholder="Time (HH:MM) *"
+                placeholderTextColor={Colors.text.tertiary}
+                value={taskTime}
+                onChangeText={setTaskTime}
+              />
+            </View>
+            <Text style={styles.helperText}>
+              Date format: DD/MM/YYYY (e.g., 29/08/2025) | Time format: HH:MM (e.g., 14:30)
+            </Text>
+          </View>
+
+          {/* Location */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Location</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Specific location (e.g., street, landmark, building)"
+              placeholderTextColor={Colors.text.tertiary}
+              value={specificLocation}
+              onChangeText={setSpecificLocation}
+            />
+            <View style={styles.locationContainer}>
+              <View style={styles.dropdownContainer}>
+                <Text style={styles.dropdownLabel}>District *</Text>
+                <TouchableOpacity
+                  style={styles.dropdownButton}
+                  onPress={() => {
+                    // Show district picker
+                    const districts = [
+                      'Addis Ketema',
+                      'Akaki Kality',
+                      'Arada',
+                      'Bole',
+                      'Gullele',
+                      'Kolfe Keranio',
+                      'Lideta',
+                      'Nifas Silk-Lafto',
+                      'Yeka',
+                      'Kirkos',
+                      'Kolfe Keranio',
+                      'Lemi Kura',
+                      'Sululta',
+                      'Burayu',
+                      'Sebeta',
+                      'Dukem',
+                      'Gelan',
+                      'Holeta',
+                      'Mendi',
+                      'Mogadishu',
+                      'Sendafa',
+                      'Sululta',
+                      'Tulu Dimtu',
+                      'Waliso'
+                    ]
+                    Alert.alert(
+                      'Select District',
+                      'Choose a district in Addis Ababa',
+                      districts.map(districtName => ({
+                        text: districtName,
+                        onPress: () => setDistrict(districtName)
+                      }))
+                    )
+                  }}
+                >
+                  <Text style={district ? styles.dropdownButtonText : styles.dropdownButtonPlaceholder}>
+                    {district || 'Select district'}
                   </Text>
-                  <Ionicons name="calendar" size={20} color="#666" />
-                </TouchableOpacity>
-              </View>
-              <View style={styles.dateTimeField}>
-                <Text style={styles.dateTimeLabel}>Time (Optional)</Text>
-                <TouchableOpacity style={styles.dateTimeInput}>
-                  <Text style={styles.dateTimeText}>
-                    {taskTime || 'Flexible'}
-                  </Text>
-                  <Ionicons name="time" size={20} color="#666" />
+                  <Ionicons name="chevron-down" size={20} color="#666" />
                 </TouchableOpacity>
               </View>
             </View>
@@ -364,33 +392,31 @@ export default function PostTask() {
 
           {/* Urgency */}
           <View style={styles.section}>
-            <Text style={styles.label}>How urgent is this?</Text>
+            <Text style={styles.sectionTitle}>Urgency</Text>
             <View style={styles.urgencyContainer}>
               {[
-                { id: 'flexible', label: 'Flexible', icon: 'time', color: '#28a745' },
-                { id: 'within_week', label: 'Within a week', icon: 'flash', color: '#ffc107' },
-                { id: 'urgent', label: 'Urgent', icon: 'warning', color: '#dc3545' },
-              ].map((option) => (
+                { id: 'flexible', label: 'Flexible', icon: 'calendar-outline' },
+                { id: 'within_week', label: 'Within Week', icon: 'time' },
+                { id: 'urgent', label: 'Urgent', icon: 'flash' }
+              ].map((urgencyOption) => (
                 <TouchableOpacity
-                  key={option.id}
+                  key={urgencyOption.id}
                   style={[
                     styles.urgencyButton,
-                    urgency === option.id && { backgroundColor: option.color },
+                    urgency === urgencyOption.id && styles.urgencyButtonActive
                   ]}
-                  onPress={() => setUrgency(option.id as any)}
+                  onPress={() => setUrgency(urgencyOption.id as any)}
                 >
                   <Ionicons 
-                    name={option.icon as any} 
+                    name={urgencyOption.icon as any} 
                     size={20} 
-                    color={urgency === option.id ? '#fff' : option.color} 
+                    color={urgency === urgencyOption.id ? '#fff' : '#666'} 
                   />
-                  <Text
-                    style={[
-                      styles.urgencyText,
-                      urgency === option.id && { color: '#fff' },
-                    ]}
-                  >
-                    {option.label}
+                  <Text style={[
+                    styles.urgencyButtonText,
+                    urgency === urgencyOption.id && styles.urgencyButtonTextActive
+                  ]}>
+                    {urgencyOption.label}
                   </Text>
                 </TouchableOpacity>
               ))}
@@ -399,35 +425,31 @@ export default function PostTask() {
 
           {/* Special Instructions */}
           <View style={styles.section}>
-            <Text style={styles.label}>Special Instructions (Optional)</Text>
+            <Text style={styles.sectionTitle}>Special Instructions (Optional)</Text>
             <TextInput
-              style={[styles.input, styles.textArea]}
-              placeholder="Any specific requirements, access instructions, or important details..."
+              style={styles.input}
+              placeholder="Any special requirements or notes"
+              placeholderTextColor={Colors.text.tertiary}
               value={specialInstructions}
               onChangeText={setSpecialInstructions}
               multiline
               numberOfLines={3}
               textAlignVertical="top"
-              maxLength={500}
             />
           </View>
 
-          {/* Post Button */}
+          {/* Submit Button */}
           <TouchableOpacity
-            style={[styles.postButton, loading && styles.postButtonDisabled]}
+            style={[styles.submitButton, loading && styles.submitButtonDisabled]}
             onPress={handlePostTask}
             disabled={loading}
           >
-            <Text style={styles.postButtonText}>
-              {loading ? 'Posting Task...' : 'Post Task'}
-            </Text>
+            {loading ? (
+              <Text style={styles.submitButtonText}>Posting...</Text>
+            ) : (
+              <Text style={styles.submitButtonText}>Post Task</Text>
+            )}
           </TouchableOpacity>
-
-          <View style={styles.footer}>
-            <Text style={styles.footerText}>
-              By posting, you agree to TaskHub's Terms of Service
-            </Text>
-          </View>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -447,231 +469,202 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     backgroundColor: '#fff',
     borderBottomWidth: 1,
-    borderBottomColor: '#eee',
+    borderBottomColor: '#e9ecef',
   },
   headerTitle: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: '600',
-    color: '#333',
+    color: '#212529',
   },
   keyboardContainer: {
     flex: 1,
   },
-  form: {
+  scrollView: {
     flex: 1,
-    padding: 20,
+    paddingHorizontal: 20,
   },
   section: {
-    marginBottom: 24,
+    marginTop: 24,
   },
-  label: {
-    fontSize: 16,
+  sectionTitle: {
+    fontSize: 18,
     fontWeight: '600',
-    color: '#333',
-    marginBottom: 8,
+    color: '#212529',
+    marginBottom: 16,
   },
-  helper: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 12,
-  },
-  loadingText: {
-    fontSize: 14,
-    color: '#666',
-    fontStyle: 'italic',
-  },
-  input: {
-    backgroundColor: '#fff',
-    borderRadius: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    fontSize: 16,
-    borderWidth: 1,
-    borderColor: '#ddd',
-  },
-  textArea: {
-    height: 120,
-    paddingTop: 12,
-  },
-  characterCount: {
-    fontSize: 12,
-    color: '#666',
-    textAlign: 'right',
-    marginTop: 4,
-  },
-  categoryContainer: {
+  categoriesContainer: {
     flexDirection: 'row',
-    gap: 8,
-    paddingVertical: 4,
+    flexWrap: 'wrap',
+    gap: 12,
   },
-  categoryChip: {
+  categoryButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#fff',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 20,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    gap: 6,
+    borderColor: '#dee2e6',
+    backgroundColor: '#fff',
+    gap: 8,
   },
-  categoryChipSelected: {
+  categoryButtonActive: {
     backgroundColor: '#007AFF',
     borderColor: '#007AFF',
   },
-  categoryIconSmall: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  categoryChipText: {
+  categoryButtonText: {
     fontSize: 14,
-    color: '#666',
+    fontWeight: '500',
+    color: '#495057',
   },
-  categoryChipTextSelected: {
+  categoryButtonTextActive: {
     color: '#fff',
   },
-  taskSizeContainer: {
+  input: {
+    borderWidth: 1,
+    borderColor: '#dee2e6',
+    borderRadius: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    fontSize: 16,
+    backgroundColor: '#fff',
+    marginBottom: 16,
+  },
+  sizeContainer: {
     gap: 12,
   },
-  taskSizeCard: {
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 12,
+  sizeButton: {
     padding: 16,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#dee2e6',
+    backgroundColor: '#fff',
   },
-  taskSizeCardSelected: {
-    backgroundColor: '#f0f8ff',
+  sizeButtonActive: {
+    backgroundColor: '#007AFF',
     borderColor: '#007AFF',
   },
-  taskSizeLabel: {
+  sizeButtonText: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#333',
+    color: '#495057',
     marginBottom: 4,
   },
-  taskSizeLabelSelected: {
-    color: '#007AFF',
+  sizeButtonTextActive: {
+    color: '#fff',
   },
-  taskSizeDesc: {
+  sizeDescription: {
     fontSize: 14,
-    color: '#666',
+    color: '#6c757d',
     marginBottom: 4,
   },
-  taskSizeDescSelected: {
-    color: '#666',
-  },
-  taskSizeExample: {
+  sizeExample: {
     fontSize: 12,
-    color: '#999',
+    color: '#adb5bd',
     fontStyle: 'italic',
   },
-  taskSizeExampleSelected: {
-    color: '#007AFF',
-  },
   budgetContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
+    // Single budget input, no need for row layout
   },
-  budgetField: {
-    flex: 1,
+  budgetInput: {
+    // Single budget input, no need for flex
   },
   budgetLabel: {
     fontSize: 14,
-    color: '#666',
-    marginBottom: 6,
-  },
-  budgetInput: {
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    fontSize: 16,
-  },
-  budgetSeparator: {
-    fontSize: 16,
-    color: '#666',
-  },
-  locationRow: {
-    flexDirection: 'row',
-    marginTop: 8,
+    fontWeight: '500',
+    color: '#495057',
+    marginBottom: 8,
   },
   dateTimeContainer: {
     flexDirection: 'row',
-    gap: 12,
+    gap: 16,
   },
-  dateTimeField: {
-    flex: 1,
-  },
-  dateTimeLabel: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 6,
-  },
-  dateTimeInput: {
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+  locationContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    gap: 16,
   },
-  dateTimeText: {
-    fontSize: 16,
-    color: '#333',
+  locationInput: {
+    flex: 1,
   },
   urgencyContainer: {
     flexDirection: 'row',
-    gap: 8,
+    gap: 12,
   },
   urgencyButton: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 8,
     paddingVertical: 12,
-    gap: 6,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#dee2e6',
+    backgroundColor: '#fff',
+    gap: 8,
   },
-  urgencyText: {
+  urgencyButtonActive: {
+    backgroundColor: '#007AFF',
+    borderColor: '#007AFF',
+  },
+  urgencyButtonText: {
     fontSize: 14,
     fontWeight: '500',
-    color: '#666',
+    color: '#495057',
   },
-  postButton: {
+  urgencyButtonTextActive: {
+    color: '#fff',
+  },
+  submitButton: {
     backgroundColor: '#007AFF',
-    borderRadius: 8,
     paddingVertical: 16,
+    borderRadius: 8,
     alignItems: 'center',
-    marginTop: 20,
+    marginTop: 32,
+    marginBottom: 32,
   },
-  postButtonDisabled: {
-    opacity: 0.6,
+  submitButtonDisabled: {
+    backgroundColor: '#6c757d',
   },
-  postButtonText: {
+  submitButtonText: {
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
   },
-  footer: {
-    paddingVertical: 20,
-    alignItems: 'center',
-  },
-  footerText: {
+  helperText: {
     fontSize: 12,
-    color: '#999',
-    textAlign: 'center',
+    color: '#6c757d',
+    fontStyle: 'italic',
+    marginTop: -8,
+    marginBottom: 16,
+  },
+  dropdownContainer: {
+    flex: 1,
+  },
+  dropdownLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#495057',
+    marginBottom: 8,
+  },
+  dropdownButton: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#dee2e6',
+    borderRadius: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#fff',
+    marginBottom: 16,
+  },
+  dropdownButtonText: {
+    fontSize: 16,
+    color: '#212529',
+  },
+  dropdownButtonPlaceholder: {
+    fontSize: 16,
+    color: '#6c757d',
   },
 })

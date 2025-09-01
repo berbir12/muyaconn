@@ -1,74 +1,26 @@
 import React, { createContext, useContext, useEffect, useState } from 'react'
 import { Session, User } from '@supabase/supabase-js'
-import AsyncStorage from '@react-native-async-storage/async-storage'
 import { supabase, UserProfile } from '../lib/supabase'
 
 interface AuthContextType {
-  session: Session | null
   user: User | null
+  session: Session | null
   profile: UserProfile | null
   loading: boolean
   signIn: (email: string, password: string) => Promise<void>
-  signUp: (email: string, password: string, userData: SignUpData) => Promise<void>
+  signUp: (email: string, password: string, profile: Partial<UserProfile>) => Promise<{ success: boolean; user: User }>
   signOut: () => Promise<void>
+  updateProfile: (updates: Partial<UserProfile>) => Promise<void>
   refreshProfile: () => Promise<void>
-  isOfflineMode: boolean
 }
-
-interface SignUpData {
-  full_name: string
-  username: string
-  role: 'customer' | 'tasker'
-}
-
-// Mock users for fallback authentication
-const MOCK_USERS = [
-  {
-    id: 'customer-demo',
-    email: 'customer@demo.com',
-    password: 'demo123',
-    profile: {
-      id: 'customer-demo',
-      username: 'demo_customer',
-      full_name: 'John Smith',
-      role: 'customer' as const,
-      avatar_url: null,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    }
-  },
-  {
-    id: 'tasker-demo',
-    email: 'tasker@demo.com',
-    password: 'demo123',
-    profile: {
-      id: 'tasker-demo',
-      username: 'demo_tasker',
-      full_name: 'Sarah Wilson',
-      role: 'tasker' as const,
-      avatar_url: null,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    }
-  }
-]
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
-export const useAuth = () => {
-  const context = useContext(AuthContext)
-  if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider')
-  }
-  return context
-}
-
-export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [session, setSession] = useState<Session | null>(null)
+export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
+  const [session, setSession] = useState<Session | null>(null)
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [loading, setLoading] = useState(true)
-  const [isOfflineMode, setIsOfflineMode] = useState(false)
 
   useEffect(() => {
     initializeAuth()
@@ -76,69 +28,56 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const initializeAuth = async () => {
     try {
-      // Try to get session from Supabase first
+      console.log('=== Initializing Auth ===')
+      // Get session from Supabase
       const { data: { session }, error } = await supabase.auth.getSession()
       
       if (error) {
-        console.log('Supabase auth failed, switching to offline mode:', error.message)
-        await initializeOfflineMode()
+        console.error('Supabase auth error:', error.message)
+        setLoading(false)
         return
       }
 
-      console.log('Initial session:', session?.user?.email)
-      setSession(session)
-      setUser(session?.user ?? null)
-      
-      if (session?.user) {
+      console.log('Session found:', !!session)
+      if (session) {
+        console.log('User ID:', session.user.id)
+        console.log('User email:', session.user.email)
+        setSession(session)
+        setUser(session.user)
         await fetchProfile(session.user.id)
       } else {
-        setLoading(false)
+        console.log('No session found')
       }
-
+      
       // Set up auth state listener
-      const {
-        data: { subscription },
-      } = supabase.auth.onAuthStateChange(async (event, session) => {
-        console.log('Auth state changed:', event, session?.user?.email)
-        setSession(session)
-        setUser(session?.user ?? null)
-        
-        if (session?.user) {
-          await fetchProfile(session.user.id)
-        } else {
-          setProfile(null)
+      const { data: { subscription } } = supabase.auth.onAuthStateChange(
+        async (event, session) => {
+          console.log('Auth state change:', event, session?.user?.id)
+          setSession(session)
+          setUser(session?.user ?? null)
+          
+          if (session?.user) {
+            await fetchProfile(session.user.id)
+          } else {
+            setProfile(null)
+          }
+          
           setLoading(false)
         }
-      })
+      )
 
+      setLoading(false)
       return () => subscription.unsubscribe()
-    } catch (error) {
-      console.log('Network error, switching to offline mode:', error)
-      await initializeOfflineMode()
+    } catch (error: any) {
+      console.error('Auth initialization error:', error)
+      setLoading(false)
     }
   }
 
-  const initializeOfflineMode = async () => {
-    setIsOfflineMode(true)
-    
-    try {
-      // Check for stored offline session
-      const storedSession = await AsyncStorage.getItem('offline_session')
-      if (storedSession) {
-        const sessionData = JSON.parse(storedSession)
-        setProfile(sessionData.profile)
-        console.log('Restored offline session for:', sessionData.profile.full_name)
-      }
-    } catch (error) {
-      console.error('Error loading offline session:', error)
-    }
-    
-    setLoading(false)
-  }
+
 
   const fetchProfile = async (userId: string) => {
     try {
-      console.log('Fetching profile for user:', userId)
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
@@ -147,210 +86,127 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (error) {
         if (error.code === 'PGRST116') {
-          console.log('Profile not found, will be created by trigger')
-          setTimeout(() => fetchProfile(userId), 1000)
+          console.log('Profile not found for user:', userId)
+          console.log('This should not happen with the database trigger - setting profile to null')
+          setProfile(null)
           return
         }
         throw error
       }
 
       if (data) {
-        console.log('Profile loaded:', data.role, data.full_name)
         setProfile(data)
+      } else {
+        setProfile(null)
       }
-      setLoading(false)
     } catch (error) {
       console.error('Error fetching profile:', error)
-      
-      // Fallback to mock profile
-      const mockUser = MOCK_USERS.find(u => u.id === userId)
-      if (mockUser) {
-        setProfile(mockUser.profile)
-      }
-      setLoading(false)
+      setProfile(null)
     }
   }
 
   const signIn = async (email: string, password: string) => {
     setLoading(true)
     try {
-      if (isOfflineMode) {
-        // Offline authentication
-        const mockUser = MOCK_USERS.find(u => u.email === email && u.password === password)
-        if (!mockUser) {
-          throw new Error('Invalid email or password')
-        }
-        
-        setProfile(mockUser.profile)
-        
-        // Store session for persistence
-        await AsyncStorage.setItem('offline_session', JSON.stringify({
-          profile: mockUser.profile,
-          timestamp: Date.now()
-        }))
-        
-        setLoading(false)
-        console.log('Offline authentication successful for:', mockUser.profile.full_name)
-        return
-      }
-
-      // Try Supabase authentication
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      })
+      const { error } = await supabase.auth.signInWithPassword({ email, password })
       
       if (error) {
-        // If network error, switch to offline mode and authenticate locally
-        if (error.message.includes('Network') || error.message.includes('fetch')) {
-          console.log('Network error during sign in, switching to offline mode')
-          setIsOfflineMode(true)
-          
-          // Authenticate with mock users directly
-          const mockUser = MOCK_USERS.find(u => u.email === email && u.password === password)
-          if (!mockUser) {
-            setLoading(false)
-            throw new Error('Invalid email or password')
-          }
-          
-          setProfile(mockUser.profile)
-          
-          // Store session for persistence
-          await AsyncStorage.setItem('offline_session', JSON.stringify({
-            profile: mockUser.profile,
-            timestamp: Date.now()
-          }))
-          
-          setLoading(false)
-          console.log('Offline authentication successful for:', mockUser.profile.full_name)
-          return
-        }
-        setLoading(false)
         throw error
       }
     } catch (error: any) {
-      // If it's a network error, switch to offline mode and try mock authentication
-      if (error.message.includes('Network') || error.message.includes('fetch') || error.message.includes('Failed to fetch')) {
-        console.log('Network error caught, switching to offline mode')
-        setIsOfflineMode(true)
-        
-        // Try mock authentication
-        const mockUser = MOCK_USERS.find(u => u.email === email && u.password === password)
-        if (!mockUser) {
-          setLoading(false)
-          throw new Error('Network connection failed. Please use demo credentials: customer@demo.com / demo123 or tasker@demo.com / demo123')
-        }
-        
-        setProfile(mockUser.profile)
-        
-        // Store session for persistence
-        await AsyncStorage.setItem('offline_session', JSON.stringify({
-          profile: mockUser.profile,
-          timestamp: Date.now()
-        }))
-        
-        setLoading(false)
-        console.log('Offline authentication successful for:', mockUser.profile.full_name)
-        return
-      }
-      
       setLoading(false)
       throw error
     }
   }
 
-  const signUp = async (email: string, password: string, userData: SignUpData) => {
+  const signUp = async (email: string, password: string, profileData: Partial<UserProfile>) => {
     setLoading(true)
     try {
-      if (isOfflineMode) {
-        // For offline mode, create a new mock user
-        const newUser = {
-          id: `user-${Date.now()}`,
-          email,
-          password,
-          profile: {
-            id: `user-${Date.now()}`,
-            username: userData.username,
-            full_name: userData.full_name,
-            role: userData.role,
-            avatar_url: null,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          }
-        }
-        
-        MOCK_USERS.push(newUser)
-        setProfile(newUser.profile)
-        
-        await AsyncStorage.setItem('offline_session', JSON.stringify({
-          profile: newUser.profile,
-          timestamp: Date.now()
-        }))
-        
-        setLoading(false)
-        return
+      // Always set role as 'customer' by default
+      const profileWithDefaultRole = {
+        ...profileData,
+        role: 'customer' as const,
       }
 
-      const { error } = await supabase.auth.signUp({
+      const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: {
-          data: {
-            full_name: userData.full_name,
-            username: userData.username,
-            role: userData.role,
-          },
+          data: profileWithDefaultRole,
         },
       })
       
       if (error) {
-        if (error.message.includes('Network') || error.message.includes('fetch')) {
-          console.log('Network error during sign up, trying offline mode')
-          setIsOfflineMode(true)
-          await signUp(email, password, userData)
-          return
-        }
         throw error
       }
-    } catch (error: any) {
-      setLoading(false)
-      
-      if (error.message.includes('Network') || error.message.includes('fetch')) {
-        throw new Error('Network connection failed. Account created in offline mode.')
+
+      // Check if signup was successful
+      if (data.user) {
+        console.log('Signup successful:', data.user.email)
+        return { success: true, user: data.user }
+      } else {
+        throw new Error('Signup failed - no user data returned')
       }
-      
+    } catch (error: any) {
+      console.error('Signup error:', error)
+      setLoading(false)
       throw error
+    } finally {
+      setLoading(false)
     }
   }
 
   const signOut = async () => {
-    if (isOfflineMode) {
-      setProfile(null)
-      await AsyncStorage.removeItem('offline_session')
-      return
-    }
-
     const { error } = await supabase.auth.signOut()
     if (error) throw error
+    setProfile(null)
+  }
+
+  const updateProfile = async (updates: Partial<UserProfile>) => {
+    if (!profile) throw new Error('No profile to update')
+    if (!user) throw new Error('No user logged in')
+    
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update(updates)
+        .eq('id', user.id)
+
+      if (error) throw error
+      
+      // Refresh profile data
+      await refreshProfile()
+    } catch (error) {
+      console.error('Update profile error:', error)
+      throw error
+    }
   }
 
   const refreshProfile = async () => {
-    if (user && !isOfflineMode) {
+    if (user) {
       await fetchProfile(user.id)
     }
   }
 
-  const value = {
-    session,
+  const value: AuthContextType = {
     user,
+    session,
     profile,
     loading,
     signIn,
     signUp,
     signOut,
+    updateProfile,
     refreshProfile,
-    isOfflineMode,
   }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
+}
+
+export function useAuth() {
+  const context = useContext(AuthContext)
+  if (context === undefined) {
+    throw new Error('useAuth must be used within an AuthProvider')
+  }
+  return context
 }

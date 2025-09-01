@@ -2,6 +2,39 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 
+// Helper function to convert DD/MM/YYYY to YYYY-MM-DD format
+const formatDateForDatabase = (dateString: string): string => {
+  // If it's already in YYYY-MM-DD format, return as is
+  if (/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
+    return dateString
+  }
+  
+  // If it's in DD/MM/YYYY format, convert it
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(dateString)) {
+    const [day, month, year] = dateString.split('/')
+    return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`
+  }
+  
+  // If it's in MM/DD/YYYY format, convert it
+  if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(dateString)) {
+    const [month, day, year] = dateString.split('/')
+    return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`
+  }
+  
+  // If it's any other format, try to parse it with Date
+  try {
+    const date = new Date(dateString)
+    if (!isNaN(date.getTime())) {
+      return date.toISOString().split('T')[0]
+    }
+  } catch (e) {
+    console.warn('Could not parse date:', dateString)
+  }
+  
+  // If all else fails, return the original string
+  return dateString
+}
+
 export interface Task {
   id: string
   customer_id: string
@@ -17,11 +50,10 @@ export interface Task {
   task_time?: string
   flexible_date: boolean
   estimated_hours?: number
-  budget_min?: number
-  budget_max?: number
+  budget: number
   final_price?: number
   task_size: 'small' | 'medium' | 'large'
-  status: 'posted' | 'assigned' | 'in_progress' | 'completed' | 'cancelled'
+  status: 'open' | 'assigned' | 'in_progress' | 'completed' | 'cancelled'
   urgency: 'flexible' | 'within_week' | 'urgent'
   special_instructions?: string
   photos?: string[]
@@ -40,15 +72,15 @@ export interface Task {
     full_name: string
     username: string
     avatar_url?: string
-    average_rating: number
-    total_reviews: number
+    rating_average: number
+    rating_count: number
   }
   tasker_profile?: {
     full_name: string
     username: string
     avatar_url?: string
-    average_rating: number
-    total_reviews: number
+    rating_average: number
+    rating_count: number
   }
   applications_count?: number
 }
@@ -57,21 +89,25 @@ export interface TaskApplication {
   id: string
   task_id: string
   tasker_id: string
-  message?: string
-  proposed_price?: number
-  estimated_time?: number
-  availability_date?: string
-  status: 'pending' | 'accepted' | 'rejected' | 'withdrawn'
+  applicant_id?: string
+  message: string
+  proposed_price: number
+  estimated_time: number
+  availability_date: string
+  status: 'pending' | 'accepted' | 'rejected'
   created_at: string
   updated_at: string
+  proposed_duration?: string
+  attachments?: string[]
+  is_cover_letter?: boolean
   
   // Joined data
   tasker_profile?: {
     full_name: string
     username: string
     avatar_url?: string
-    average_rating: number
-    total_reviews: number
+    rating_average: number
+    rating_count: number
     hourly_rate?: number
     bio?: string
     skills?: string[]
@@ -89,26 +125,211 @@ export const useTasks = () => {
       setLoading(true)
       setError(null)
 
+      // Mock data for offline mode
+      const MOCK_TASKS: Task[] = [
+                 {
+           id: '1',
+           customer_id: 'customer-demo',
+           category_id: '1',
+           title: 'House Cleaning Needed',
+           description: 'Need help with deep cleaning of a 2-bedroom apartment. Includes kitchen, bathroom, and living areas.',
+           address: '123 Main St',
+           city: 'Downtown',
+           state: 'CA',
+           zip_code: '90210',
+           task_size: 'medium',
+           budget: 100,
+           urgency: 'urgent',
+           status: 'open',
+           flexible_date: false,
+           created_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+           updated_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+           task_categories: {
+             name: 'Cleaning',
+             slug: 'cleaning',
+             icon: 'water',
+             color: '#3B82F6'
+           },
+           customer_profile: {
+             full_name: 'Sarah M.',
+             username: 'sarah_m',
+             avatar_url: undefined,
+             rating_average: 4.5,
+             rating_count: 12
+           },
+           applications_count: 3
+         },
+        {
+          id: '2',
+          customer_id: 'customer-demo',
+          category_id: '2',
+          title: 'Plumbing Repair',
+          description: 'Leaky faucet in kitchen and bathroom. Need professional plumber to fix both issues.',
+          address: '456 Oak Ave',
+          city: 'Westside',
+          state: 'CA',
+          zip_code: '90211',
+          task_size: 'small',
+          budget: 200,
+          urgency: 'within_week',
+          status: 'open',
+          flexible_date: true,
+          created_at: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
+          updated_at: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
+          task_categories: {
+            name: 'Plumbing',
+            slug: 'plumbing',
+            icon: 'hammer',
+            color: '#10B981'
+          },
+                     customer_profile: {
+             full_name: 'Mike R.',
+             username: 'mike_r',
+             avatar_url: undefined,
+             rating_average: 4.8,
+             rating_count: 8
+           },
+          applications_count: 1
+        },
+        {
+          id: '3',
+          customer_id: 'customer-demo',
+          category_id: '3',
+          title: 'Garden Maintenance',
+          description: 'Regular garden maintenance including mowing, trimming, and planting seasonal flowers.',
+          address: '789 Pine St',
+          city: 'Suburbs',
+          state: 'CA',
+          zip_code: '90212',
+          task_size: 'large',
+          budget: 80,
+          urgency: 'flexible',
+          status: 'open',
+          flexible_date: true,
+          created_at: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
+          updated_at: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
+          task_categories: {
+            name: 'Gardening',
+            slug: 'gardening',
+            icon: 'leaf',
+            color: '#059669'
+          },
+                     customer_profile: {
+             full_name: 'Lisa K.',
+             username: 'lisa_k',
+             avatar_url: undefined,
+             rating_average: 4.6,
+             rating_count: 15
+           },
+          applications_count: 2
+        }
+      ]
+
+
+
       let query = supabase
         .from('tasks')
         .select(`
           *,
           task_categories (name, slug, icon, color),
-          customer_profile:profiles!customer_id (full_name, username, avatar_url, average_rating, total_reviews),
-          tasker_profile:profiles!tasker_id (full_name, username, avatar_url, average_rating, total_reviews)
+          customer_profile:profiles!customer_id (full_name, username, avatar_url, rating_average, rating_count),
+          tasker_profile:profiles!tasker_id (full_name, username, avatar_url, rating_average, rating_count)
         `)
 
       // Filter based on user role
-      if (profile?.role === 'customer') {
-        query = query.eq('customer_id', profile.id)
-      } else if (profile?.role === 'tasker') {
-        // Taskers see either unassigned tasks or tasks they're assigned to
-        query = query.or(`tasker_id.is.null,tasker_id.eq.${profile.id}`)
+      if (profile?.role === 'customer' && profile?.id) {
+        // Customers see their own tasks (for management) plus all open tasks (to see what's available)
+        // Use a simpler approach: first get customer's own tasks, then get open tasks from others
+        const { data: ownTasks, error: ownError } = await supabase
+          .from('tasks')
+          .select(`
+            *,
+            task_categories (name, slug, icon, color),
+            customer_profile:profiles!customer_id (full_name, username, avatar_url, rating_average, rating_count),
+            tasker_profile:profiles!tasker_id (full_name, username, avatar_url, rating_average, rating_count)
+          `)
+          .eq('customer_id', profile.id)
+          .order('created_at', { ascending: false })
+
+        if (ownError) throw ownError
+
+        const { data: openTasks, error: openError } = await supabase
+          .from('tasks')
+          .select(`
+            *,
+            task_categories (name, slug, icon, color),
+            customer_profile:profiles!customer_id (full_name, username, avatar_url, rating_average, rating_count),
+            tasker_profile:profiles!tasker_id (full_name, username, avatar_url, rating_average, rating_count)
+          `)
+          .eq('status', 'open')
+          .neq('customer_id', profile.id)
+          .order('created_at', { ascending: false })
+
+        if (openError) throw openError
+
+        // Combine the results
+        const combinedTasks = [...(ownTasks || []), ...(openTasks || [])]
+        const sortedTasks = combinedTasks.sort((a, b) => 
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        )
+
+        // Get application counts for combined tasks
+        if (sortedTasks.length > 0) {
+          const taskIds = sortedTasks.map(task => task.id)
+          const { data: applicationCounts } = await supabase
+            .from('task_applications')
+            .select('task_id')
+            .in('task_id', taskIds)
+
+          const countsMap = applicationCounts?.reduce((acc, app) => {
+            acc[app.task_id] = (acc[app.task_id] || 0) + 1
+            return acc
+          }, {} as Record<string, number>) || {}
+
+          const tasksWithCounts = sortedTasks.map(task => ({
+            ...task,
+            applications_count: countsMap[task.id] || 0
+          }))
+
+          setTasks(tasksWithCounts)
+        } else {
+          setTasks([])
+        }
+        return // Exit early for customers
+      } else if ((profile?.role === 'tasker' || profile?.role === 'both') && profile?.id) {
+        // Taskers see ALL open tasks (to apply to) plus tasks assigned to them
+        query = query.or(`status.eq.open,tasker_id.eq.${profile.id}`)
+      } else {
+        // Unauthenticated users or unknown roles see all open tasks
+        query = query.eq('status', 'open')
       }
 
       const { data, error } = await query.order('created_at', { ascending: false })
 
-      if (error) throw error
+            if (error) throw error
+
+      console.log(`Fetched ${data?.length || 0} tasks for user role: ${profile?.role}`)
+      if (data && data.length > 0) {
+        console.log('Sample task:', {
+          id: data[0].id,
+          title: data[0].title,
+          customer_id: data[0].customer_id,
+          status: data[0].status
+        })
+        
+        // Check if the data is valid (has proper titles)
+        const hasValidData = data.every(task => 
+          task.title && 
+          typeof task.title === 'string' && 
+          task.title.length > 0 && 
+          !task.title.includes('-') // UUIDs typically contain hyphens
+        )
+        
+        if (!hasValidData) {
+          console.log('Data validation failed, using mock data')
+          throw new Error('Invalid task data structure')
+        }
+      }
 
       // Get application counts for each task
       if (data && data.length > 0) {
@@ -136,7 +357,47 @@ export const useTasks = () => {
       }
     } catch (err: any) {
       console.error('Error fetching tasks:', err)
-      setError(err.message)
+      // Fallback to mock data if Supabase fails
+      if (err.message.includes('Failed to fetch') || err.message.includes('ERR_NAME_NOT_RESOLVED')) {
+        console.log('Supabase failed, using mock data')
+        const MOCK_TASKS: Task[] = [
+          {
+            id: '1',
+            customer_id: 'customer-demo',
+            category_id: '1',
+            title: 'House Cleaning Needed',
+            description: 'Need help with deep cleaning of a 2-bedroom apartment. Includes kitchen, bathroom, and living areas.',
+            address: '123 Main St',
+            city: 'Downtown',
+            state: 'CA',
+            zip_code: '90210',
+            task_size: 'medium',
+            budget: 100,
+            urgency: 'urgent',
+            status: 'open',
+            flexible_date: false,
+            created_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+            updated_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+            task_categories: {
+              name: 'Cleaning',
+              slug: 'cleaning',
+              icon: 'water',
+              color: '#3B82F6'
+            },
+                       customer_profile: {
+             full_name: 'Sarah M.',
+             username: 'sarah_m',
+             avatar_url: undefined,
+             rating_average: 4.5,
+             rating_count: 12
+           },
+            applications_count: 3
+          }
+        ]
+        setTasks(MOCK_TASKS)
+      } else {
+        setError(err.message)
+      }
     } finally {
       setLoading(false)
     }
@@ -151,32 +412,80 @@ export const useTasks = () => {
     state: string
     zip_code: string
     task_size: 'small' | 'medium' | 'large'
-    budget_min?: number
-    budget_max?: number
+    budget: number
     task_date?: string
     task_time?: string
     urgency: 'flexible' | 'within_week' | 'urgent'
     special_instructions?: string
   }) => {
     try {
-      if (!profile) throw new Error('User not authenticated')
+      console.log('=== createTask function called ===')
+      console.log('Input taskData:', taskData)
+      
+      if (!profile) {
+        console.error('No user profile found')
+        throw new Error('User not authenticated')
+      }
 
+      console.log('User profile found:', profile)
+      console.log('Profile ID:', profile.id)
+
+      // Create task object that exactly matches the database schema
+      const taskToInsert = {
+        customer_id: profile.id,
+        category_id: taskData.category_id,
+        title: taskData.title,
+        description: taskData.description,
+        address: taskData.address,
+        city: taskData.city,
+        state: taskData.state,
+        zip_code: taskData.zip_code,
+        task_size: taskData.task_size,
+        urgency: taskData.urgency,
+        status: 'open',
+        flexible_date: !taskData.task_date,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        // Optional fields - only include if they have values
+        ...(taskData.task_date && { task_date: formatDateForDatabase(taskData.task_date) }),
+        ...(taskData.task_time && { task_time: taskData.task_time }),
+        ...(taskData.budget && { budget: taskData.budget }),
+        ...(taskData.special_instructions && { requirements: [taskData.special_instructions] }),
+      }
+
+      console.log('=== Task to insert into database ===')
+      console.log('Full task object:', JSON.stringify(taskToInsert, null, 2))
+
+      console.log('=== Attempting Supabase insert ===')
       const { data, error } = await supabase
         .from('tasks')
-        .insert({
-          ...taskData,
-          customer_id: profile.id,
-          flexible_date: !taskData.task_date,
-        })
+        .insert(taskToInsert)
         .select()
         .single()
 
-      if (error) throw error
+      if (error) {
+        console.error('=== Supabase insert error ===')
+        console.error('Error details:', error)
+        console.error('Error message:', error.message)
+        console.error('Error details:', error.details)
+        console.error('Error hint:', error.hint)
+        console.error('Error code:', error.code)
+        throw error
+      }
 
+      console.log('=== Task created successfully in database ===')
+      console.log('Returned data:', data)
+      
+      console.log('=== Refreshing tasks list ===')
       await fetchTasks() // Refresh tasks list
+      
       return data
     } catch (err: any) {
-      console.error('Error creating task:', err)
+      console.error('=== Error in createTask function ===')
+      console.error('Error type:', typeof err)
+      console.error('Error details:', err)
+      console.error('Error message:', err.message)
+      if (err.stack) console.error('Error stack:', err.stack)
       throw err
     }
   }
@@ -207,7 +516,7 @@ export const useTasks = () => {
         .from('tasks')
         .update({ 
           tasker_id: taskerId,
-          status: 'assigned',
+          status: 'in_progress',
           updated_at: new Date().toISOString()
         })
         .eq('id', taskId)
@@ -239,29 +548,99 @@ export const useTasks = () => {
 }
 
 export const useTaskApplications = (taskId?: string) => {
-  const { profile } = useAuth()
+  const authResult = useAuth()
+  console.log('=== useTaskApplications hook initialized ===')
+  console.log('Auth result:', authResult)
+  
+  const { profile } = authResult
+  console.log('Profile from auth:', profile)
+  console.log('Task ID:', taskId)
+  console.log('Profile role:', profile?.role)
+  console.log('Profile ID:', profile?.id)
+  
   const [applications, setApplications] = useState<TaskApplication[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+
+  // Function to update user role to 'both' if they're currently 'customer'
+  const updateUserRole = async () => {
+    try {
+      console.log('=== updateUserRole called ===')
+      console.log('Current profile role:', profile?.role)
+      
+      if (!profile?.id) {
+        throw new Error('No user profile found')
+      }
+      
+      if (profile.role === 'customer' || !profile.role) {
+        console.log('=== Updating user role to both ===')
+        const { error } = await supabase
+          .from('profiles')
+          .update({ role: 'both' })
+          .eq('id', profile.id)
+        
+        if (error) {
+          console.error('Error updating role:', error)
+          throw error
+        }
+        
+        console.log('=== User role updated to both ===')
+        
+        // Try to refresh the profile without full page reload
+        try {
+          const { data: updatedProfile, error: fetchError } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', profile.id)
+            .single()
+          
+          if (fetchError) {
+            console.error('Error fetching updated profile:', fetchError)
+            // Fallback to page reload
+            window.location.reload()
+          } else {
+            console.log('=== Profile refreshed successfully ===')
+            console.log('Updated profile:', updatedProfile)
+            // Force a re-render by updating the profile in the auth context
+            // This is a workaround since we can't directly update the auth context
+            window.location.reload()
+          }
+        } catch (refreshError) {
+          console.error('Error refreshing profile:', refreshError)
+          window.location.reload()
+        }
+      } else {
+        console.log('=== User already has appropriate role ===')
+        console.log('Current role:', profile.role)
+      }
+    } catch (err) {
+      console.error('Error updating user role:', err)
+      throw err
+    }
+  }
 
   const fetchApplications = async () => {
     try {
       setLoading(true)
       setError(null)
 
+      console.log('=== fetchApplications called ===')
+      console.log('Task ID:', taskId)
+      console.log('Profile role:', profile?.role)
+
       let query = supabase
         .from('task_applications')
         .select(`
           *,
           tasker_profile:profiles!tasker_id (
-            full_name, username, avatar_url, average_rating, total_reviews, 
+            full_name, username, avatar_url, rating_average, rating_count, 
             hourly_rate, bio, skills
           )
         `)
 
       if (taskId) {
         query = query.eq('task_id', taskId)
-      } else if (profile?.role === 'tasker') {
+      } else if (profile?.role === 'tasker' && profile?.id) {
         query = query.eq('tasker_id', profile.id)
       }
 
@@ -271,6 +650,8 @@ export const useTaskApplications = (taskId?: string) => {
       setApplications(data || [])
     } catch (err: any) {
       console.error('Error fetching applications:', err)
+      // Don't use mock data - just show empty state
+      setApplications([])
       setError(err.message)
     } finally {
       setLoading(false)
@@ -278,30 +659,70 @@ export const useTaskApplications = (taskId?: string) => {
   }
 
   const applyToTask = async (taskId: string, applicationData: {
-    message?: string
-    proposed_price?: number
-    estimated_time?: number
-    availability_date?: string
+    message: string
+    proposed_price: number
+    estimated_time: number
+    availability_date: string
   }) => {
     try {
       if (!profile) throw new Error('User not authenticated')
 
+      console.log('=== applyToTask function called ===')
+      console.log('Task ID:', taskId)
+      console.log('Tasker ID:', profile.id)
+      console.log('Profile role:', profile.role)
+      console.log('Application data:', applicationData)
+
+      // Check if user has the required role to apply for tasks
+      if (profile.role === 'customer' || !profile.role) {
+        throw new Error('You must become a verified tasker before applying for tasks. Please submit a tasker application first.')
+      }
+
+      // Additional verification: ensure user has tasker role
+      if (profile.role !== 'tasker' && profile.role !== 'both') {
+        throw new Error('Your account is not verified as a tasker. Please contact support to verify your tasker status.')
+      }
+
+      console.log('=== User verified as tasker, proceeding with application ===')
+
+      const applicationToInsert = {
+        task_id: taskId,
+        tasker_id: profile.id,
+        message: applicationData.message,
+        proposed_price: applicationData.proposed_price,
+        estimated_time: applicationData.estimated_time,
+        availability_date: applicationData.availability_date,
+        status: 'pending',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }
+
+      console.log('=== Application to insert ===')
+      console.log('Full application object:', JSON.stringify(applicationToInsert, null, 2))
+
       const { data, error } = await supabase
         .from('task_applications')
-        .insert({
-          task_id: taskId,
-          tasker_id: profile.id,
-          ...applicationData,
-        })
+        .insert(applicationToInsert)
         .select()
         .single()
 
-      if (error) throw error
+      if (error) {
+        console.error('=== Supabase insert error ===')
+        console.error('Error details:', error)
+        throw error
+      }
+
+      console.log('=== Application created successfully ===')
+      console.log('Returned data:', data)
 
       await fetchApplications() // Refresh applications list
       return data
     } catch (err: any) {
-      console.error('Error applying to task:', err)
+      console.error('=== Error in applyToTask function ===')
+      console.error('Error type:', typeof err)
+      console.error('Error details:', err)
+      console.error('Error message:', err.message)
+      if (err.stack) console.error('Error stack:', err.stack)
       throw err
     }
   }
@@ -331,6 +752,8 @@ export const useTaskApplications = (taskId?: string) => {
     }
   }, [profile, taskId])
 
+
+
   return {
     applications,
     loading,
@@ -338,5 +761,7 @@ export const useTaskApplications = (taskId?: string) => {
     refetch: fetchApplications,
     applyToTask,
     updateApplicationStatus,
+    updateUserRole,
+    profile,
   }
 }

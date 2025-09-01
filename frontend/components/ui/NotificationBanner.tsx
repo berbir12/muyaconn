@@ -12,7 +12,7 @@ import { LinearGradient } from 'expo-linear-gradient'
 import Colors from '../../constants/Colors'
 import { Spacing, BorderRadius, Typography, Shadows } from '../../constants/Design'
 
-export type NotificationType = 'success' | 'error' | 'warning' | 'info' | 'chat'
+export type NotificationType = 'success' | 'error' | 'warning' | 'info' | 'chat' | 'application_accepted' | 'application_declined' | 'direct_booking'
 
 interface NotificationBannerProps {
   type: NotificationType
@@ -131,6 +131,27 @@ const NotificationBanner: React.FC<NotificationBannerProps> = ({
         return {
           icon: 'chatbubble' as const,
           colors: Colors.gradients.primary,
+          iconColor: Colors.primary[600],
+          borderColor: Colors.primary[500],
+        }
+      case 'application_accepted':
+        return {
+          icon: 'checkmark-circle' as const,
+          colors: Colors.gradients.emerald,
+          iconColor: Colors.success[600],
+          borderColor: Colors.success[500],
+        }
+      case 'application_declined':
+        return {
+          icon: 'close-circle' as const,
+          colors: Colors.gradients.sunset,
+          iconColor: Colors.error[600],
+          borderColor: Colors.error[500],
+        }
+      case 'direct_booking':
+        return {
+          icon: 'calendar' as const,
+          colors: Colors.gradients.ocean,
           iconColor: Colors.primary[600],
           borderColor: Colors.primary[500],
         }

@@ -60,7 +60,7 @@ MOCK_CATEGORIES = [
         "name": "Furniture Assembly",
         "slug": "furniture-assembly",
         "description": "IKEA and furniture assembly services",
-        "icon": "construct-outline",
+        "icon": "hammer-outline",
         "color": "#10B981",
         "is_active": True,
         "sort_order": 2
@@ -179,7 +179,7 @@ api_router = APIRouter(prefix="/api")
 # Define Models
 class UserRole(str):
     CUSTOMER = "customer"
-    TECHNICIAN = "technician"
+    TASKER = "tasker"
 
 class UserProfile(BaseModel):
     id: str
