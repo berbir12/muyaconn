@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import {
   View,
   Text,
@@ -15,7 +15,7 @@ import { Ionicons } from '@expo/vector-icons'
 import { router } from 'expo-router'
 import { useAuth } from '../contexts/AuthContext'
 import { useTasks } from '../hooks/useTasks'
-import { useChat } from '../hooks/useChat'
+import { useCategories } from '../hooks/useCategories'
 import Colors from '../constants/Colors'
 import { Spacing, BorderRadius, Typography } from '../constants/Design'
 import TaskCard from '../components/TaskCard'
@@ -23,35 +23,16 @@ import TaskApplicationModal from '../components/TaskApplicationModal'
 import TaskApplicationCard from '../components/TaskApplicationCard'
 import TaskerProfileModal from '../components/TaskerProfileModal'
 import NotificationButton from '../components/NotificationButton'
-import ChatInterface from '../components/ChatInterface'
+import SimpleChatModal from '../components/SimpleChatModal'
+import SearchFilter, { SearchFilters } from '../components/SearchFilter'
 
 export default function Jobs() {
   const { profile } = useAuth()
   const { tasks, loading, error, refetch } = useTasks()
-  const { createChat, chats, messages, sendMessage, selectChat } = useChat()
+  const { categories } = useCategories()
   
-  // Debug: Log tasks whenever they change
-  useEffect(() => {
-    console.log('All Tasks:', tasks?.map(t => ({ 
-      id: t.id, 
-      title: t.title, 
-      status: t.status, 
-      customer_id: t.customer_id,
-      tasker_id: t.tasker_id 
-    })))
-  }, [tasks])
   const [viewMode, setViewMode] = useState<'available' | 'my-tasks'>('available')
   
-  // Debug: Log view mode changes
-  useEffect(() => {
-    console.log('Current View Mode:', viewMode)
-  }, [viewMode])
-  
-  // Debug: Log when view mode is set
-  const setViewModeWithLog = (mode: 'available' | 'my-tasks') => {
-    console.log('Setting view mode to:', mode)
-    setViewMode(mode)
-  }
   const [selectedTask, setSelectedTask] = useState<any>(null)
   const [showApplicationModal, setShowApplicationModal] = useState(false)
   const [selectedTaskForApplications, setSelectedTaskForApplications] = useState<any>(null)
@@ -60,8 +41,12 @@ export default function Jobs() {
   const [showTaskerProfileModal, setShowTaskerProfileModal] = useState(false)
   const [userApplications, setUserApplications] = useState<Set<string>>(new Set())
   const [loadingApplications, setLoadingApplications] = useState(false)
-  const [showChatDialog, setShowChatDialog] = useState(false)
-  const [currentChat, setCurrentChat] = useState<any>(null)
+  const [showChatModal, setShowChatModal] = useState(false)
+  const [currentChatId, setCurrentChatId] = useState<string>('')
+  const [currentTaskId, setCurrentTaskId] = useState<string>('')
+  const [currentCustomerId, setCurrentCustomerId] = useState<string>('')
+  const [currentTaskerId, setCurrentTaskerId] = useState<string>('')
+  const [searchFilters, setSearchFilters] = useState<SearchFilters | null>(null)
 
   // Simple notification function that works with current setup
   const createSimpleNotification = async (userId: string, title: string, message: string, type: string) => {
@@ -91,32 +76,119 @@ export default function Jobs() {
   }
 
   const fetchUserApplications = async () => {
-    if (!profile || (profile.role !== 'tasker' && profile.role !== 'both')) return
+    if (!profile) {
+
+      setUserApplications(new Set())
+      return
+    }
+    
+    // Only fetch applications for taskers or users with both roles
+    if (profile.role !== 'tasker' && profile.role !== 'both') {
+
+      setUserApplications(new Set()) // Clear applications if user is not a tasker
+      return
+    }
+    
     try {
+
       const { data: applications, error } = await supabase
         .from('task_applications')
-        .select('task_id')
+        .select('task_id, status, created_at')
         .eq('tasker_id', profile.id)
-      if (!error && applications) {
+      
+      if (error) {
+        console.error('Error fetching user applications:', error)
+        setUserApplications(new Set()) // Clear on error
+        return
+      }
+      
+      if (applications && applications.length > 0) {
+        // Include ALL applications to prevent re-application to any task the user has already applied to
+        // This includes pending, accepted, and rejected applications
         const taskIds = new Set(applications.map(app => app.task_id))
         setUserApplications(taskIds)
+      } else {
+
+        setUserApplications(new Set())
       }
     } catch (error) {
       console.error('Error fetching user applications:', error)
+      setUserApplications(new Set()) // Clear on error
     }
   }
 
   useEffect(() => {
-    fetchUserApplications()
+    if (profile) {
+      fetchUserApplications()
+    } else {
+      // Clear applications when user logs out
+      setUserApplications(new Set())
+    }
   }, [profile])
 
   const handleApplyToTask = (task: any) => {
+
+    
     if (userApplications.has(task.id)) {
-      Alert.alert(
-        'Already Applied',
-        'You have already applied to this task. You cannot apply multiple times.',
-        [{ text: 'OK' }]
-      )
+      // Double-check with database to get the specific status
+      const checkApplicationStatus = async () => {
+        try {
+          const { data: dbApplications, error } = await supabase
+            .from('task_applications')
+            .select('status')
+            .eq('task_id', task.id)
+            .eq('tasker_id', profile?.id)
+            .single()
+
+          if (error) {
+            console.error('Database check error:', error)
+            return 'unknown'
+          }
+          return dbApplications?.status || 'unknown'
+        } catch (error) {
+          console.error('Error checking application status:', error)
+          return 'unknown'
+        }
+      }
+
+      // Get the specific status and show appropriate message
+      checkApplicationStatus().then(status => {
+        let title = 'Cannot Apply'
+        let message = 'You cannot apply to this task.'
+        
+        switch (status) {
+          case 'pending':
+            title = 'Already Applied'
+            message = 'You have already applied to this task and it is pending review.'
+            break
+          case 'accepted':
+            title = 'Application Accepted'
+            message = 'Your application has already been accepted for this task.'
+            break
+          case 'rejected':
+            title = 'Application Declined'
+            message = 'Your application for this task was declined. You cannot apply again.'
+            break
+          default:
+            title = 'Already Applied'
+            message = 'You have already applied to this task. You cannot apply multiple times.'
+        }
+
+        Alert.alert(
+          title,
+          message,
+          [
+            { text: 'OK' },
+            { 
+              text: 'Refresh Status', 
+              onPress: () => {
+
+                fetchUserApplications()
+              }
+            }
+          ]
+        )
+      })
       return
     }
     setSelectedTask(task)
@@ -131,11 +203,7 @@ export default function Jobs() {
   // Debug function to check application status
   const debugApplicationStatus = async (taskId: string) => {
     try {
-      console.log('=== Debug Application Status ===')
-      console.log('Task ID:', taskId)
-      console.log('User ID:', profile?.id)
-      console.log('User Applications Set:', Array.from(userApplications))
-      console.log('Has Applied:', userApplications.has(taskId))
+
       
       // Check database directly
       const { data: dbApplications, error } = await supabase
@@ -147,11 +215,17 @@ export default function Jobs() {
       if (error) {
         console.error('Database check error:', error)
       } else {
-        console.log('Database applications for this task:', dbApplications)
+
       }
     } catch (error) {
       console.error('Debug function error:', error)
     }
+  }
+
+  // Function to manually refresh application status
+  const refreshApplicationStatus = async () => {
+
+    await fetchUserApplications()
   }
 
   // Function to clear any problematic applications (for testing)
@@ -159,7 +233,7 @@ export default function Jobs() {
     if (!profile) return
     
     try {
-      console.log('Clearing test applications for user:', profile.id)
+
       
       // Delete any applications by this user
       const { error } = await supabase
@@ -171,7 +245,7 @@ export default function Jobs() {
         console.error('Error clearing applications:', error)
         Alert.alert('Error', 'Failed to clear applications')
       } else {
-        console.log('Applications cleared successfully')
+
         setUserApplications(new Set())
         Alert.alert('Success', 'Test applications cleared')
       }
@@ -231,10 +305,7 @@ export default function Jobs() {
 
   const handleAcceptApplication = async (application: any) => {
     try {
-      console.log('=== Accepting Application ===')
-      console.log('Application:', application)
-      console.log('Task ID:', application.task_id)
-      console.log('Tasker ID:', application.tasker_id)
+
       
       // Update application status
       const { error: updateError } = await supabase
@@ -243,7 +314,7 @@ export default function Jobs() {
         .eq('id', application.id)
 
       if (updateError) throw updateError
-      console.log('Application status updated successfully')
+
 
       // Update task status to 'in_progress' and assign tasker
       const { data: updateData, error: taskError } = await supabase
@@ -259,55 +330,50 @@ export default function Jobs() {
       if (taskError) throw taskError
       
       if (updateData && updateData.length > 0) {
-        console.log('Task updated successfully:', updateData[0])
-        console.log('New task status:', updateData[0].status)
-        console.log('New tasker_id:', updateData[0].tasker_id)
+
       } else {
         console.warn('Task update returned no data')
       }
 
-      // Create a booking record for the accepted task
-      try {
-        const { error: bookingError } = await supabase
-          .from('bookings')
-          .insert({
-            task_id: application.task_id,
-            customer_id: profile?.id,
-            tasker_id: application.tasker_id,
-            status: 'in_progress',
-            accepted_at: new Date().toISOString(),
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          })
-
-        if (bookingError) {
-          console.warn('Failed to create booking:', bookingError)
-          // Don't fail the whole operation if booking creation fails
-        } else {
-          console.log('Booking created successfully for task:', application.task_id)
-        }
-      } catch (bookingErr) {
-        console.warn('Error creating booking:', bookingErr)
-        // Don't fail the whole operation if booking creation fails
-      }
+      // Note: No need to create a separate booking record since we're working with tasks table directly
+      // The task status update above handles the booking functionality
 
       // Create chat for the accepted task
       try {
-        const { error: chatError } = await supabase
+        // Check if chat already exists first
+        const { data: existingChat, error: checkError } = await supabase
           .from('chats')
-          .insert({
-            task_id: application.task_id,
-            customer_id: profile?.id,
-            tasker_id: application.tasker_id,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          })
+          .select('*')
+          .eq('task_id', application.task_id)
+          .eq('customer_id', profile?.id)
+          .eq('tasker_id', application.tasker_id)
+          .limit(1)
 
-        if (chatError) {
-          console.warn('Failed to create chat:', chatError)
-          // Don't fail the whole operation if chat creation fails
+        if (checkError) {
+          console.warn('Error checking for existing chat:', checkError)
+        } else if (existingChat && existingChat.length > 0) {
+          // Chat already exists, no need to create
         } else {
-          console.log('Chat created successfully for task:', application.task_id)
+          // Create new chat
+          const { error: chatError } = await supabase
+            .from('chats')
+            .insert({
+              task_id: application.task_id,
+              customer_id: profile?.id,
+              tasker_id: application.tasker_id,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString()
+            })
+
+          if (chatError) {
+            if (chatError.code === '23505') {
+
+            } else {
+              console.warn('Failed to create chat:', chatError)
+            }
+          } else {
+
+          }
         }
       } catch (chatErr) {
         console.warn('Error creating chat:', chatErr)
@@ -325,11 +391,11 @@ export default function Jobs() {
       // Enhanced success feedback with next steps
       Alert.alert(
         '🎉 Application Accepted!',
-        `Great! ${application.tasker_profile?.full_name || 'The tasker'} will now work on your task. Here's what happens next:\n\n• The task has moved to your Bookings section\n• The tasker will contact you to discuss details\n• You can chat with them using the chat button\n• Track progress in the Bookings tab\n• Mark as complete when work is done`,
+        `Great! ${application.tasker_profile?.full_name || 'The tasker'} will now work on your task. Here's what happens next:\n\n• The tasker will contact you to discuss details\n• You can chat with them using the chat button\n• Track progress in your "My Tasks" tab\n• Mark as complete when work is done`,
         [
           {
-            text: 'View Bookings',
-            onPress: () => router.push('/bookings')
+            text: 'View My Tasks',
+            onPress: () => setViewMode('my-tasks')
           },
           {
             text: 'Continue',
@@ -340,8 +406,7 @@ export default function Jobs() {
       
       setShowApplicationsModal(false)
       
-      console.log('Before refetch - Current tasks:', tasks?.length)
-      console.log('Task that was accepted:', selectedTaskForApplications?.title, 'Status:', selectedTaskForApplications?.status)
+
       
       // Refresh applications for the current task
       if (selectedTaskForApplications) {
@@ -349,7 +414,7 @@ export default function Jobs() {
       }
       
       // Force a complete refresh of tasks data
-      console.log('Refreshing tasks data...')
+
       await refetch()
       
       // Also manually update the local tasks state to ensure immediate UI update
@@ -361,11 +426,10 @@ export default function Jobs() {
         )
         // Note: We can't directly set tasks here since it's from a hook
         // The refetch should handle this, but we'll log for debugging
-        console.log('Local task update would set status to in_progress for task:', application.task_id)
+
       }
       
-      console.log('After refetch - Current tasks:', tasks?.length)
-      console.log('Current view mode after refetch:', viewMode)
+
       
       // Verify the task was actually updated in the database
       const { data: verifyData, error: verifyError } = await supabase
@@ -377,7 +441,7 @@ export default function Jobs() {
       if (verifyError) {
         console.error('Failed to verify task update:', verifyError)
       } else {
-        console.log('Task verification after update:', verifyData)
+
         if (verifyData.status !== 'in_progress') {
           console.error('Task status was not properly updated! Expected: in_progress, Got:', verifyData.status)
         }
@@ -393,7 +457,7 @@ export default function Jobs() {
     try {
       const { error } = await supabase
         .from('task_applications')
-        .update({ status: 'declined' })
+        .update({ status: 'rejected' })
         .eq('id', application.id)
 
       if (error) throw error
@@ -427,44 +491,60 @@ export default function Jobs() {
     if (!profile) return
 
     try {
-      // Check if chat already exists
-      const existingChat = chats.find(chat => 
-        chat.task_id === task.id && 
-        (chat.customer_id === profile.id || chat.tasker_id === profile.id)
-      )
-
-      if (existingChat) {
-        // Use existing chat
-        selectChat(existingChat)
-        setCurrentChat(existingChat)
-        setShowChatDialog(true)
-        return
-      }
-
-      // Create new chat - determine the correct tasker_id
-      let taskerId = profile.id
+      console.log('Starting chat for task:', task.id)
       
-      // If this is a customer trying to chat with an assigned tasker
+      // Determine the correct tasker_id
+      let taskerId = profile.id
       if (profile.id === task.customer_id && task.tasker_id) {
         taskerId = task.tasker_id
-      }
-      // If this is a tasker trying to chat with a customer
-      else if (profile.id === task.tasker_id) {
+      } else if (profile.id === task.tasker_id) {
         taskerId = profile.id
       }
 
-      const chatData = {
-        task_id: task.id,
-        customer_id: task.customer_id,
-        tasker_id: taskerId
+      // Check if chat already exists
+      const { data: existingChat, error: checkError } = await supabase
+        .from('chats')
+        .select('*')
+        .eq('task_id', task.id)
+        .eq('customer_id', task.customer_id)
+        .eq('tasker_id', taskerId)
+        .single()
+
+      let chatId = ''
+
+      if (existingChat && !checkError) {
+        // Use existing chat
+        chatId = existingChat.id
+        console.log('Using existing chat:', chatId)
+      } else {
+        // Create new chat
+        const { data: newChat, error: createError } = await supabase
+          .from('chats')
+          .insert({
+            task_id: task.id,
+            customer_id: task.customer_id,
+            tasker_id: taskerId
+          })
+          .select('*')
+          .single()
+
+        if (createError) {
+          console.error('Error creating chat:', createError)
+          Alert.alert('Error', 'Failed to create chat. Please try again.')
+          return
+        }
+
+        chatId = newChat.id
+        console.log('Created new chat:', chatId)
       }
 
-      const newChat = await createChat(chatData)
-      if (newChat) {
-        selectChat(newChat)
-        setCurrentChat(newChat)
-        setShowChatDialog(true)
-      }
+      // Set chat data and show modal
+      setCurrentChatId(chatId)
+      setCurrentTaskId(task.id)
+      setCurrentCustomerId(task.customer_id)
+      setCurrentTaskerId(taskerId)
+      setShowChatModal(true)
+      
     } catch (error: any) {
       console.error('Error starting chat:', error)
       Alert.alert('Error', 'Failed to start chat. Please try again.')
@@ -474,6 +554,14 @@ export default function Jobs() {
   const handleCloseApplicationModal = () => {
     setShowApplicationModal(false)
     setSelectedTask(null)
+  }
+
+  const handleCloseChatModal = () => {
+    setShowChatModal(false)
+    setCurrentChatId('')
+    setCurrentTaskId('')
+    setCurrentCustomerId('')
+    setCurrentTaskerId('')
   }
 
   const handleCloseApplicationsModal = () => {
@@ -494,9 +582,17 @@ export default function Jobs() {
     // The chat will be deselected when a new chat is selected or when the component unmounts
   }
 
+  const handleSearch = (filters: SearchFilters) => {
+    setSearchFilters(filters)
+  }
+
+  const handleClearSearch = () => {
+    setSearchFilters(null)
+  }
+
   const handleEditTask = (task: any) => {
     // Navigate to edit task page or open edit modal
-    console.log('Edit task:', task.id)
+
     // For now, we'll navigate to the post-task page with the task data
     // In a full implementation, you'd want a dedicated edit task page
     router.push({
@@ -593,52 +689,117 @@ export default function Jobs() {
     )
   }
 
-  const getFilteredTasks = () => {
-    console.log('=== getFilteredTasks called ===')
-    console.log('View mode:', viewMode)
-    console.log('Total tasks available:', tasks?.length)
-    console.log('Profile role:', profile?.role)
-    console.log('Profile ID:', profile?.id)
+  const applySearchFilters = (tasks: any[], filters: SearchFilters) => {
+    let filteredTasks = [...tasks]
+
+    // Text search
+    if (filters.query) {
+      const query = filters.query.toLowerCase()
+      filteredTasks = filteredTasks.filter(task => 
+        task.title.toLowerCase().includes(query) ||
+        task.description.toLowerCase().includes(query) ||
+        task.city.toLowerCase().includes(query) ||
+        task.state.toLowerCase().includes(query)
+      )
+    }
+
+    // Category filter
+    if (filters.category) {
+      filteredTasks = filteredTasks.filter(task => 
+        task.category_id === filters.category
+      )
+    }
+
+    // Price range filter
+    if (filters.minPrice) {
+      const minPrice = parseFloat(filters.minPrice)
+      filteredTasks = filteredTasks.filter(task => task.budget >= minPrice)
+    }
+    if (filters.maxPrice) {
+      const maxPrice = parseFloat(filters.maxPrice)
+      filteredTasks = filteredTasks.filter(task => task.budget <= maxPrice)
+    }
+
+    // Location filter
+    if (filters.location) {
+      const location = filters.location.toLowerCase()
+      filteredTasks = filteredTasks.filter(task => 
+        task.city.toLowerCase().includes(location) ||
+        task.state.toLowerCase().includes(location) ||
+        task.address.toLowerCase().includes(location)
+      )
+    }
+
+    // Sort tasks
+    switch (filters.sortBy) {
+      case 'newest':
+        filteredTasks.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+        break
+      case 'oldest':
+        filteredTasks.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+        break
+      case 'price_low':
+        filteredTasks.sort((a, b) => a.budget - b.budget)
+        break
+      case 'price_high':
+        filteredTasks.sort((a, b) => b.budget - a.budget)
+        break
+      case 'budget':
+        filteredTasks.sort((a, b) => b.budget - a.budget)
+        break
+    }
+
+    return filteredTasks
+  }
+
+  const getFilteredTasks = useMemo(() => {
+    
+    
+    if (!tasks || tasks.length === 0) {
+
+      return []
+    }
+    
+    let baseTasks = []
     
     if (viewMode === 'my-tasks') {
-      // Show all tasks created by the current user (regardless of status)
-      const myTasks = tasks.filter(task => task.customer_id === profile?.id)
-      console.log('My Tasks (customer_id match):', myTasks.map(t => ({ 
-        id: t.id, 
-        title: t.title, 
-        status: t.status,
-        customer_id: t.customer_id,
-        tasker_id: t.tasker_id
-      })))
-      return myTasks
+      // Show tasks created by the current user, excluding completed tasks
+      baseTasks = tasks.filter(task => {
+        const isOwner = task.customer_id === profile?.id
+        const isNotCompleted = task.status !== 'completed'
+
+        return isOwner && isNotCompleted
+      })
+
     } else {
       // Available Jobs: Show tasks that are available for application
-      const availableTasks = tasks.filter(task => {
+      baseTasks = tasks.filter(task => {
         // Don't show user's own tasks
         if (task.customer_id === profile?.id) {
-          console.log('Filtering out own task:', task.title, 'Status:', task.status)
+
           return false
         }
         
         // Only show tasks that are still open for applications
-        // Tasks with status 'open' are available
+        // Tasks with status 'open' are available (regardless of tasker_id)
+        // Tasks with status 'assigned' are available only if no tasker_id is set
         // Tasks with status 'in_progress', 'completed', 'cancelled' are not available
-        const isAvailable = task.status === 'open' && !task.tasker_id
-        if (!isAvailable) {
-          console.log('Filtering out unavailable task:', task.title, 'Status:', task.status, 'Tasker ID:', task.tasker_id)
-        }
+        const isAvailable = task.status === 'open' || (task.status === 'assigned' && !task.tasker_id)
+
         return isAvailable
       })
-      console.log('Available Tasks (after filtering):', availableTasks.map(t => ({ 
-        id: t.id, 
-        title: t.title, 
-        status: t.status,
-        customer_id: t.customer_id,
-        tasker_id: t.tasker_id
-      })))
-      return availableTasks
+
     }
-  }
+
+    // Apply search filters if any
+    if (searchFilters) {
+      baseTasks = applySearchFilters(baseTasks, searchFilters)
+    }
+
+
+
+    return baseTasks
+  }, [tasks, viewMode, profile?.id, searchFilters])
 
   return (
     <SafeAreaView style={styles.container}>
@@ -661,6 +822,13 @@ export default function Jobs() {
         </View>
       </View>
 
+      {/* Search and Filter */}
+      <SearchFilter
+        onSearch={handleSearch}
+        onClear={handleClearSearch}
+        categories={categories}
+      />
+
       {/* View Mode Toggle for Customers and Both Roles */}
       {(profile?.role === 'customer' || profile?.role === 'both') && (
         <View style={styles.viewModeContainer}>
@@ -669,7 +837,7 @@ export default function Jobs() {
                styles.viewModeButton,
                viewMode === 'available' && styles.viewModeButtonActive
              ]}
-             onPress={() => setViewModeWithLog('available')}
+             onPress={() => setViewMode('available')}
            >
             <Ionicons 
               name="globe" 
@@ -689,7 +857,7 @@ export default function Jobs() {
                styles.viewModeButton,
                viewMode === 'my-tasks' && styles.viewModeButtonActive
              ]}
-             onPress={() => setViewModeWithLog('my-tasks')}
+             onPress={() => setViewMode('my-tasks')}
            >
             <Ionicons 
               name="briefcase" 
@@ -706,9 +874,24 @@ export default function Jobs() {
         </View>
       )}
 
+
+
+      {/* Active Filters Indicator */}
+      {searchFilters && (
+        <View style={styles.activeFiltersContainer}>
+          <View style={styles.activeFiltersContent}>
+            <Ionicons name="filter" size={16} color={Colors.primary[500]} />
+            <Text style={styles.activeFiltersText}>Filters applied</Text>
+            <TouchableOpacity onPress={handleClearSearch} style={styles.clearFiltersButton}>
+              <Text style={styles.clearFiltersText}>Clear</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
       {/* Tasks List */}
       <FlatList
-        data={getFilteredTasks()}
+        data={getFilteredTasks}
         renderItem={renderTask}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContainer}
@@ -720,12 +903,19 @@ export default function Jobs() {
           <View style={styles.emptyState}>
             <Ionicons name="briefcase-outline" size={64} color={Colors.neutral[300]} />
             <Text style={styles.emptyStateText}>
-              {viewMode === 'available' ? 'No available jobs' : 'No tasks posted yet'}
+              {searchFilters 
+                ? 'No tasks match your search criteria'
+                : viewMode === 'available' 
+                  ? 'No available jobs' 
+                  : 'No tasks posted yet'
+              }
             </Text>
             <Text style={styles.emptyStateSubtext}>
-              {viewMode === 'available' 
-                ? 'Check back later for new opportunities'
-                : 'Start by posting your first job'
+              {searchFilters
+                ? 'Try adjusting your search filters'
+                : viewMode === 'available' 
+                  ? 'Check back later for new opportunities'
+                  : 'Start by posting your first job'
               }
             </Text>
           </View>
@@ -797,30 +987,15 @@ export default function Jobs() {
          />
        )}
 
-      {/* Chat Dialog */}
-      {showChatDialog && currentChat && (
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContainer, styles.chatModalContainer]}>
-            <ChatInterface
-              chat={currentChat}
-              messages={messages}
-              onSendMessage={async (message: string) => {
-                try {
-                  await sendMessage({
-                    chat_id: currentChat.id,
-                    message,
-                    message_type: 'text'
-                  })
-                } catch (error) {
-                  console.error('Error sending message:', error)
-                }
-              }}
-              onBack={handleCloseChatDialog}
-              loading={false}
-            />
-          </View>
-        </View>
-      )}
+      {/* Simple Chat Modal */}
+      <SimpleChatModal
+        visible={showChatModal}
+        chatId={currentChatId}
+        taskId={currentTaskId}
+        customerId={currentCustomerId}
+        taskerId={currentTaskerId}
+        onClose={handleCloseChatModal}
+      />
     </SafeAreaView>
   )
 }
@@ -935,11 +1110,7 @@ const styles = StyleSheet.create({
     maxHeight: '80%',
     width: '90%',
   },
-  chatModalContainer: {
-    maxHeight: '90%',
-    width: '95%',
-    margin: Spacing.sm,
-  },
+
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -966,4 +1137,44 @@ const styles = StyleSheet.create({
     color: Colors.text.secondary,
     marginTop: Spacing.sm,
   },
+  activeFiltersContainer: {
+    backgroundColor: Colors.primary[50],
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.primary[100],
+  },
+  activeFiltersContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.sm,
+    gap: Spacing.sm,
+  },
+  activeFiltersText: {
+    flex: 1,
+    fontSize: Typography.fontSize.sm,
+    color: Colors.primary[700],
+    fontWeight: Typography.fontWeight.medium,
+  },
+  clearFiltersButton: {
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.xs,
+  },
+  clearFiltersText: {
+    fontSize: Typography.fontSize.sm,
+    color: Colors.primary[600],
+    fontWeight: Typography.fontWeight.medium,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: Spacing.xl,
+  },
+  loadingText: {
+    marginTop: Spacing.md,
+    fontSize: Typography.fontSize.md,
+    color: Colors.text.secondary,
+    textAlign: 'center',
+  },
+
 })

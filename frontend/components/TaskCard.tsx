@@ -240,13 +240,19 @@ export default function TaskCard({
                 </TouchableOpacity>
               ) : (
                 // Show chat button for assigned tasks
-                <TouchableOpacity 
-                  style={[styles.actionButton, styles.chatButton]} 
-                  onPress={onStartChat}
-                >
-                  <Ionicons name="chatbubble" size={16} color={Colors.text.inverse} />
-                  <Text style={styles.actionButtonText}>Chat</Text>
-                </TouchableOpacity>
+                <View style={styles.assignedTaskContainer}>
+                  <View style={styles.assignedStatus}>
+                    <Ionicons name="checkmark-circle" size={14} color={Colors.success[500]} />
+                    <Text style={styles.assignedStatusText}>Task Assigned</Text>
+                  </View>
+                  <TouchableOpacity 
+                    style={[styles.actionButton, styles.chatButton]} 
+                    onPress={onStartChat}
+                  >
+                    <Ionicons name="chatbubble" size={16} color={Colors.primary[500]} />
+                    <Text style={styles.chatButtonText}>Message Tasker</Text>
+                  </TouchableOpacity>
+                </View>
               )}
             </>
           ) : hasApplied ? (
@@ -479,17 +485,32 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.background.primary,
+    backgroundColor: Colors.primary[50],
     paddingVertical: Spacing.sm,
     paddingHorizontal: Spacing.md,
     borderRadius: BorderRadius.md,
     borderWidth: 1,
-    borderColor: Colors.primary[500],
+    borderColor: Colors.primary[200],
     gap: Spacing.xs,
   },
   chatButtonText: {
-    color: Colors.primary[500],
+    color: Colors.primary[600],
     fontSize: Typography.fontSize.sm,
+    fontWeight: Typography.fontWeight.medium,
+  },
+  assignedTaskContainer: {
+    gap: Spacing.xs,
+  },
+  assignedStatus: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.xs,
+    paddingVertical: Spacing.xs,
+  },
+  assignedStatusText: {
+    fontSize: Typography.fontSize.xs,
+    color: Colors.success[600],
     fontWeight: Typography.fontWeight.medium,
   },
 })

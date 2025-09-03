@@ -12,11 +12,11 @@ import {
 import { Ionicons } from '@expo/vector-icons'
 import { useAuth } from '../contexts/AuthContext'
 import { useTasks } from '../hooks/useTasks'
-import { useChat } from '../hooks/useChat'
 import Colors from '../constants/Colors'
 import { Spacing, BorderRadius, Typography } from '../constants/Design'
 import WorkProgressCard from '../components/WorkProgressCard'
-import ChatInterface from '../components/ChatInterface'
+import SimpleChatModal from '../components/SimpleChatModal'
+import { supabase } from '../lib/supabase'
 
 interface ActiveWorkItem {
   id: string
@@ -32,11 +32,12 @@ interface ActiveWorkItem {
 export default function ActiveWorkScreen() {
   const { profile } = useAuth()
   const { tasks, loading: tasksLoading, refetch: refetchTasks } = useTasks()
-  const { createChat, chats, messages, sendMessage, selectChat } = useChat()
-  
   const [activeWork, setActiveWork] = useState<ActiveWorkItem[]>([])
-  const [showChatDialog, setShowChatDialog] = useState(false)
-  const [currentChat, setCurrentChat] = useState<any>(null)
+  const [showChatModal, setShowChatModal] = useState(false)
+  const [currentChatId, setCurrentChatId] = useState<string>('')
+  const [currentTaskId, setCurrentTaskId] = useState<string>('')
+  const [currentCustomerId, setCurrentCustomerId] = useState<string>('')
+  const [currentTaskerId, setCurrentTaskerId] = useState<string>('')
   const [loading, setLoading] = useState(false)
 
   // Combine tasks into active work items
@@ -82,20 +83,60 @@ export default function ActiveWorkScreen() {
     if (!profile) return
 
     try {
-      // For tasks, create or find existing chat
-      const existingChat = chats.find(chat => 
-        chat.task_id === workItem.id && 
-        (chat.customer_id === profile.id || chat.tasker_id === profile.id)
-      )
-
-      if (existingChat) {
-        setCurrentChat(existingChat)
-        setShowChatDialog(true)
-        return
+      console.log('Starting chat for work item:', workItem.id)
+      
+      // Determine the correct tasker_id
+      let taskerId = profile.id
+      if (profile.id === workItem.data.customer_id && workItem.data.tasker_id) {
+        taskerId = workItem.data.tasker_id
+      } else if (profile.id === workItem.data.tasker_id) {
+        taskerId = profile.id
       }
 
-      // Create new chat if needed
-      Alert.alert('Info', 'Chat creation will be available soon.')
+      // Check if chat already exists
+      const { data: existingChat, error: checkError } = await supabase
+        .from('chats')
+        .select('*')
+        .eq('task_id', workItem.id)
+        .eq('customer_id', workItem.data.customer_id)
+        .eq('tasker_id', taskerId)
+        .single()
+
+      let chatId = ''
+
+      if (existingChat && !checkError) {
+        // Use existing chat
+        chatId = existingChat.id
+        console.log('Using existing chat:', chatId)
+      } else {
+        // Create new chat
+        const { data: newChat, error: createError } = await supabase
+          .from('chats')
+          .insert({
+            task_id: workItem.id,
+            customer_id: workItem.data.customer_id,
+            tasker_id: taskerId
+          })
+          .select('*')
+          .single()
+
+        if (createError) {
+          console.error('Error creating chat:', createError)
+          Alert.alert('Error', 'Failed to create chat. Please try again.')
+          return
+        }
+
+        chatId = newChat.id
+        console.log('Created new chat:', chatId)
+      }
+
+      // Set chat data and show modal
+      setCurrentChatId(chatId)
+      setCurrentTaskId(workItem.id)
+      setCurrentCustomerId(workItem.data.customer_id)
+      setCurrentTaskerId(taskerId)
+      setShowChatModal(true)
+      
     } catch (error: any) {
       console.error('Error starting chat:', error)
       Alert.alert('Error', 'Failed to start chat. Please try again.')
@@ -107,6 +148,14 @@ export default function ActiveWorkScreen() {
       // Navigate to task details
       Alert.alert('Info', 'Task details view will be available soon.')
     }
+  }
+
+  const handleCloseChatModal = () => {
+    setShowChatModal(false)
+    setCurrentChatId('')
+    setCurrentTaskId('')
+    setCurrentCustomerId('')
+    setCurrentTaskerId('')
   }
 
   const renderWorkItem = ({ item }: { item: ActiveWorkItem }) => (
@@ -161,33 +210,15 @@ export default function ActiveWorkScreen() {
         ListEmptyComponent={renderEmptyState}
       />
 
-      {/* Chat Dialog */}
-      {showChatDialog && currentChat && (
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContainer, styles.chatModalContainer]}>
-            <ChatInterface
-              chat={currentChat}
-              messages={messages}
-              onSendMessage={async (message: string) => {
-                try {
-                  await sendMessage({
-                    chat_id: currentChat.id,
-                    message,
-                    message_type: 'text'
-                  })
-                } catch (error) {
-                  console.error('Error sending message:', error)
-                }
-              }}
-              onBack={() => {
-                setShowChatDialog(false)
-                setCurrentChat(null)
-              }}
-              loading={false}
-            />
-          </View>
-        </View>
-      )}
+      {/* Simple Chat Modal */}
+      <SimpleChatModal
+        visible={showChatModal}
+        chatId={currentChatId}
+        taskId={currentTaskId}
+        customerId={currentCustomerId}
+        taskerId={currentTaskerId}
+        onClose={handleCloseChatModal}
+      />
     </SafeAreaView>
   )
 }
@@ -238,27 +269,5 @@ const styles = StyleSheet.create({
     marginTop: Spacing.sm,
     lineHeight: 22,
   },
-  modalOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 1000,
-  },
-  modalContainer: {
-    backgroundColor: Colors.background.primary,
-    borderRadius: BorderRadius.lg,
-    margin: Spacing.lg,
-    maxHeight: '80%',
-    width: '90%',
-  },
-  chatModalContainer: {
-    maxHeight: '90%',
-    width: '95%',
-    margin: Spacing.sm,
-  },
+
 })

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
+import { ChatCleanupService } from '../services/ChatCleanupService'
 
 // Helper function to convert DD/MM/YYYY to YYYY-MM-DD format
 const formatDateForDatabase = (dateString: string): string => {
@@ -125,106 +126,6 @@ export const useTasks = () => {
       setLoading(true)
       setError(null)
 
-      // Mock data for offline mode
-      const MOCK_TASKS: Task[] = [
-                 {
-           id: '1',
-           customer_id: 'customer-demo',
-           category_id: '1',
-           title: 'House Cleaning Needed',
-           description: 'Need help with deep cleaning of a 2-bedroom apartment. Includes kitchen, bathroom, and living areas.',
-           address: '123 Main St',
-           city: 'Downtown',
-           state: 'CA',
-           zip_code: '90210',
-           task_size: 'medium',
-           budget: 100,
-           urgency: 'urgent',
-           status: 'open',
-           flexible_date: false,
-           created_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-           updated_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-           task_categories: {
-             name: 'Cleaning',
-             slug: 'cleaning',
-             icon: 'water',
-             color: '#3B82F6'
-           },
-           customer_profile: {
-             full_name: 'Sarah M.',
-             username: 'sarah_m',
-             avatar_url: undefined,
-             rating_average: 4.5,
-             rating_count: 12
-           },
-           applications_count: 3
-         },
-        {
-          id: '2',
-          customer_id: 'customer-demo',
-          category_id: '2',
-          title: 'Plumbing Repair',
-          description: 'Leaky faucet in kitchen and bathroom. Need professional plumber to fix both issues.',
-          address: '456 Oak Ave',
-          city: 'Westside',
-          state: 'CA',
-          zip_code: '90211',
-          task_size: 'small',
-          budget: 200,
-          urgency: 'within_week',
-          status: 'open',
-          flexible_date: true,
-          created_at: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
-          updated_at: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
-          task_categories: {
-            name: 'Plumbing',
-            slug: 'plumbing',
-            icon: 'hammer',
-            color: '#10B981'
-          },
-                     customer_profile: {
-             full_name: 'Mike R.',
-             username: 'mike_r',
-             avatar_url: undefined,
-             rating_average: 4.8,
-             rating_count: 8
-           },
-          applications_count: 1
-        },
-        {
-          id: '3',
-          customer_id: 'customer-demo',
-          category_id: '3',
-          title: 'Garden Maintenance',
-          description: 'Regular garden maintenance including mowing, trimming, and planting seasonal flowers.',
-          address: '789 Pine St',
-          city: 'Suburbs',
-          state: 'CA',
-          zip_code: '90212',
-          task_size: 'large',
-          budget: 80,
-          urgency: 'flexible',
-          status: 'open',
-          flexible_date: true,
-          created_at: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
-          updated_at: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
-          task_categories: {
-            name: 'Gardening',
-            slug: 'gardening',
-            icon: 'leaf',
-            color: '#059669'
-          },
-                     customer_profile: {
-             full_name: 'Lisa K.',
-             username: 'lisa_k',
-             avatar_url: undefined,
-             rating_average: 4.6,
-             rating_count: 15
-           },
-          applications_count: 2
-        }
-      ]
-
 
 
       let query = supabase
@@ -306,17 +207,9 @@ export const useTasks = () => {
 
       const { data, error } = await query.order('created_at', { ascending: false })
 
-            if (error) throw error
+      if (error) throw error
 
-      console.log(`Fetched ${data?.length || 0} tasks for user role: ${profile?.role}`)
       if (data && data.length > 0) {
-        console.log('Sample task:', {
-          id: data[0].id,
-          title: data[0].title,
-          customer_id: data[0].customer_id,
-          status: data[0].status
-        })
-        
         // Check if the data is valid (has proper titles)
         const hasValidData = data.every(task => 
           task.title && 
@@ -326,7 +219,6 @@ export const useTasks = () => {
         )
         
         if (!hasValidData) {
-          console.log('Data validation failed, using mock data')
           throw new Error('Invalid task data structure')
         }
       }
@@ -359,7 +251,7 @@ export const useTasks = () => {
       console.error('Error fetching tasks:', err)
       // Fallback to mock data if Supabase fails
       if (err.message.includes('Failed to fetch') || err.message.includes('ERR_NAME_NOT_RESOLVED')) {
-        console.log('Supabase failed, using mock data')
+
         const MOCK_TASKS: Task[] = [
           {
             id: '1',
@@ -419,16 +311,15 @@ export const useTasks = () => {
     special_instructions?: string
   }) => {
     try {
-      console.log('=== createTask function called ===')
-      console.log('Input taskData:', taskData)
+
       
       if (!profile) {
         console.error('No user profile found')
         throw new Error('User not authenticated')
       }
 
-      console.log('User profile found:', profile)
-      console.log('Profile ID:', profile.id)
+
+
 
       // Create task object that exactly matches the database schema
       const taskToInsert = {
@@ -453,10 +344,7 @@ export const useTasks = () => {
         ...(taskData.special_instructions && { requirements: [taskData.special_instructions] }),
       }
 
-      console.log('=== Task to insert into database ===')
-      console.log('Full task object:', JSON.stringify(taskToInsert, null, 2))
-
-      console.log('=== Attempting Supabase insert ===')
+      
       const { data, error } = await supabase
         .from('tasks')
         .insert(taskToInsert)
@@ -473,10 +361,7 @@ export const useTasks = () => {
         throw error
       }
 
-      console.log('=== Task created successfully in database ===')
-      console.log('Returned data:', data)
-      
-      console.log('=== Refreshing tasks list ===')
+
       await fetchTasks() // Refresh tasks list
       
       return data
@@ -502,6 +387,13 @@ export const useTasks = () => {
         .eq('id', taskId)
 
       if (error) throw error
+
+      // Delete associated chats when task is completed or cancelled
+      if (status === 'completed') {
+        await ChatCleanupService.deleteChatsForCompletedTask(taskId)
+      } else if (status === 'cancelled') {
+        await ChatCleanupService.deleteChatsForCancelledTask(taskId)
+      }
 
       await fetchTasks() // Refresh tasks list
     } catch (err: any) {
@@ -549,14 +441,7 @@ export const useTasks = () => {
 
 export const useTaskApplications = (taskId?: string) => {
   const authResult = useAuth()
-  console.log('=== useTaskApplications hook initialized ===')
-  console.log('Auth result:', authResult)
-  
   const { profile } = authResult
-  console.log('Profile from auth:', profile)
-  console.log('Task ID:', taskId)
-  console.log('Profile role:', profile?.role)
-  console.log('Profile ID:', profile?.id)
   
   const [applications, setApplications] = useState<TaskApplication[]>([])
   const [loading, setLoading] = useState(true)
@@ -565,15 +450,14 @@ export const useTaskApplications = (taskId?: string) => {
   // Function to update user role to 'both' if they're currently 'customer'
   const updateUserRole = async () => {
     try {
-      console.log('=== updateUserRole called ===')
-      console.log('Current profile role:', profile?.role)
+
       
       if (!profile?.id) {
         throw new Error('No user profile found')
       }
       
       if (profile.role === 'customer' || !profile.role) {
-        console.log('=== Updating user role to both ===')
+
         const { error } = await supabase
           .from('profiles')
           .update({ role: 'both' })
@@ -584,7 +468,7 @@ export const useTaskApplications = (taskId?: string) => {
           throw error
         }
         
-        console.log('=== User role updated to both ===')
+
         
         // Try to refresh the profile without full page reload
         try {
@@ -599,8 +483,7 @@ export const useTaskApplications = (taskId?: string) => {
             // Fallback to page reload
             window.location.reload()
           } else {
-            console.log('=== Profile refreshed successfully ===')
-            console.log('Updated profile:', updatedProfile)
+
             // Force a re-render by updating the profile in the auth context
             // This is a workaround since we can't directly update the auth context
             window.location.reload()
@@ -610,8 +493,7 @@ export const useTaskApplications = (taskId?: string) => {
           window.location.reload()
         }
       } else {
-        console.log('=== User already has appropriate role ===')
-        console.log('Current role:', profile.role)
+
       }
     } catch (err) {
       console.error('Error updating user role:', err)
@@ -624,9 +506,7 @@ export const useTaskApplications = (taskId?: string) => {
       setLoading(true)
       setError(null)
 
-      console.log('=== fetchApplications called ===')
-      console.log('Task ID:', taskId)
-      console.log('Profile role:', profile?.role)
+
 
       let query = supabase
         .from('task_applications')
@@ -667,11 +547,7 @@ export const useTaskApplications = (taskId?: string) => {
     try {
       if (!profile) throw new Error('User not authenticated')
 
-      console.log('=== applyToTask function called ===')
-      console.log('Task ID:', taskId)
-      console.log('Tasker ID:', profile.id)
-      console.log('Profile role:', profile.role)
-      console.log('Application data:', applicationData)
+
 
       // Check if user has the required role to apply for tasks
       if (profile.role === 'customer' || !profile.role) {
@@ -683,7 +559,7 @@ export const useTaskApplications = (taskId?: string) => {
         throw new Error('Your account is not verified as a tasker. Please contact support to verify your tasker status.')
       }
 
-      console.log('=== User verified as tasker, proceeding with application ===')
+
 
       const applicationToInsert = {
         task_id: taskId,
@@ -697,8 +573,7 @@ export const useTaskApplications = (taskId?: string) => {
         updated_at: new Date().toISOString(),
       }
 
-      console.log('=== Application to insert ===')
-      console.log('Full application object:', JSON.stringify(applicationToInsert, null, 2))
+
 
       const { data, error } = await supabase
         .from('task_applications')
@@ -712,8 +587,44 @@ export const useTaskApplications = (taskId?: string) => {
         throw error
       }
 
-      console.log('=== Application created successfully ===')
-      console.log('Returned data:', data)
+
+
+      // Send notification to customer about new application
+      try {
+        // Get task details for notification
+        const { data: taskData, error: taskError } = await supabase
+          .from('tasks')
+          .select('title, customer_id')
+          .eq('id', taskId)
+          .single()
+
+        if (!taskError && taskData) {
+          // Get tasker name for notification
+          const { data: taskerData, error: taskerError } = await supabase
+            .from('profiles')
+            .select('full_name, username')
+            .eq('id', profile.id)
+            .single()
+
+          if (!taskerError && taskerData) {
+            const taskerName = taskerData.full_name || taskerData.username || 'A tasker'
+            
+            // Import and call the notification service
+            const { TaskNotificationService } = await import('../services/TaskNotificationService')
+            await TaskNotificationService.notifyTaskApplicationSubmitted(
+              taskId,
+              profile.id,
+              taskData.customer_id,
+              taskData.title,
+              taskerName
+            )
+
+          }
+        }
+      } catch (notificationError) {
+        console.error('Failed to send application notification:', notificationError)
+        // Don't fail the application submission if notification fails
+      }
 
       await fetchApplications() // Refresh applications list
       return data

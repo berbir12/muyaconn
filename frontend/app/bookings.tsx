@@ -12,9 +12,13 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import { router } from 'expo-router'
 import { useBookings } from '../hooks/useBookings'
+import { useAuth } from '../contexts/AuthContext'
+import SimpleChatModal from '../components/SimpleChatModal'
+import { supabase } from '../lib/supabase'
 import Colors from '../constants/Colors'
 
 export default function BookingsScreen() {
+  const { profile } = useAuth()
   const { 
     bookings, 
     loading, 
@@ -26,14 +30,90 @@ export default function BookingsScreen() {
     updateBookingStatus,
     assignTasker
   } = useBookings()
-  
   const [refreshing, setRefreshing] = useState(false)
   const [selectedFilter, setSelectedFilter] = useState<'all' | 'open' | 'in_progress' | 'completed' | 'cancelled'>('all')
+  const [showChatModal, setShowChatModal] = useState(false)
+  const [currentChatId, setCurrentChatId] = useState<string>('')
+  const [currentTaskId, setCurrentTaskId] = useState<string>('')
+  const [currentCustomerId, setCurrentCustomerId] = useState<string>('')
+  const [currentTaskerId, setCurrentTaskerId] = useState<string>('')
 
   const onRefresh = async () => {
     setRefreshing(true)
     await fetchBookings()
     setRefreshing(false)
+  }
+
+  const handleStartChat = async (booking: any) => {
+    if (!profile) return
+
+    try {
+      console.log('Starting chat for booking:', booking.id)
+      
+      // Determine the correct tasker_id
+      let taskerId = profile.id
+      if (profile.id === booking.customer_id && booking.tasker_id) {
+        taskerId = booking.tasker_id
+      } else if (profile.id === booking.tasker_id) {
+        taskerId = profile.id
+      }
+
+      // Check if chat already exists
+      const { data: existingChat, error: checkError } = await supabase
+        .from('chats')
+        .select('*')
+        .eq('task_id', booking.id)
+        .eq('customer_id', booking.customer_id)
+        .eq('tasker_id', taskerId)
+        .single()
+
+      let chatId = ''
+
+      if (existingChat && !checkError) {
+        // Use existing chat
+        chatId = existingChat.id
+        console.log('Using existing chat:', chatId)
+      } else {
+        // Create new chat
+        const { data: newChat, error: createError } = await supabase
+          .from('chats')
+          .insert({
+            task_id: booking.id,
+            customer_id: booking.customer_id,
+            tasker_id: taskerId
+          })
+          .select('*')
+          .single()
+
+        if (createError) {
+          console.error('Error creating chat:', createError)
+          Alert.alert('Error', 'Failed to create chat. Please try again.')
+          return
+        }
+
+        chatId = newChat.id
+        console.log('Created new chat:', chatId)
+      }
+
+      // Set chat data and show modal
+      setCurrentChatId(chatId)
+      setCurrentTaskId(booking.id)
+      setCurrentCustomerId(booking.customer_id)
+      setCurrentTaskerId(taskerId)
+      setShowChatModal(true)
+      
+    } catch (error: any) {
+      console.error('Error starting chat:', error)
+      Alert.alert('Error', 'Failed to start chat. Please try again.')
+    }
+  }
+
+  const handleCloseChatModal = () => {
+    setShowChatModal(false)
+    setCurrentChatId('')
+    setCurrentTaskId('')
+    setCurrentCustomerId('')
+    setCurrentTaskerId('')
   }
 
   const getFilteredBookings = () => {
@@ -244,10 +324,10 @@ export default function BookingsScreen() {
           <View style={styles.actionButtons}>
             <TouchableOpacity
               style={[styles.actionButton, styles.chatButton]}
-              onPress={() => router.push(`/chats?taskId=${item.id}`)}
+              onPress={() => handleStartChat(item)}
             >
-              <Ionicons name="chatbubble" size={16} color={Colors.text.inverse} />
-              <Text style={styles.actionButtonText}>Chat</Text>
+              <Ionicons name="chatbubble" size={16} color={Colors.primary[500]} />
+              <Text style={styles.chatButtonText}>Message Customer</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.actionButton, styles.completeButton]}
@@ -263,10 +343,10 @@ export default function BookingsScreen() {
           <View style={styles.actionButtons}>
             <TouchableOpacity
               style={[styles.actionButton, styles.chatButton]}
-              onPress={() => router.push(`/chats?taskId=${item.id}`)}
+              onPress={() => handleStartChat(item)}
             >
-              <Ionicons name="chatbubble" size={16} color={Colors.text.inverse} />
-              <Text style={styles.actionButtonText}>Chat</Text>
+              <Ionicons name="chatbubble" size={16} color={Colors.primary[500]} />
+              <Text style={styles.chatButtonText}>Message Tasker</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -357,6 +437,16 @@ export default function BookingsScreen() {
             </Text>
           </View>
         }
+      />
+
+      {/* Simple Chat Modal */}
+      <SimpleChatModal
+        visible={showChatModal}
+        chatId={currentChatId}
+        taskId={currentTaskId}
+        customerId={currentCustomerId}
+        taskerId={currentTaskerId}
+        onClose={handleCloseChatModal}
       />
     </SafeAreaView>
   )
@@ -531,12 +621,19 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.success[600],
   },
   chatButton: {
-    backgroundColor: Colors.primary[500],
+    backgroundColor: Colors.primary[50],
+    borderWidth: 1,
+    borderColor: Colors.primary[200],
   },
   actionButtonText: {
     fontSize: 14,
     fontWeight: '600',
     color: Colors.text.inverse,
+  },
+  chatButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: Colors.primary[600],
   },
   errorContainer: {
     flex: 1,
@@ -585,4 +682,5 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 20,
   },
+
 })

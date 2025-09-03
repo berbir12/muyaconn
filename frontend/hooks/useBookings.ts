@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { useNotifications } from './useNotifications'
+import { ChatCleanupService } from '../services/ChatCleanupService'
 
 export interface TaskBooking {
   id: string
@@ -155,76 +156,45 @@ export function useBookings() {
 
   const cancelBooking = async (bookingId: string) => {
     try {
-      // First get the booking details to find the task_id
-      const { data: booking, error: fetchError } = await supabase
-        .from('bookings')
-        .select('task_id')
+      // Update the task status directly since we're working with tasks table
+      const { error: taskError } = await supabase
+        .from('tasks')
+        .update({ 
+          status: 'cancelled',
+          tasker_id: null,
+          updated_at: new Date().toISOString()
+        })
         .eq('id', bookingId)
-        .single()
 
-      if (fetchError) throw fetchError
+      if (taskError) throw taskError
 
-      // Update the booking status
-      await updateBookingStatus(bookingId, 'cancelled')
+      // Delete associated chats when task is cancelled
+      await ChatCleanupService.deleteChatsForCancelledTask(bookingId)
 
-      // Also update the task status to cancelled and remove tasker assignment
-      if (booking?.task_id) {
-        const { error: taskError } = await supabase
-          .from('tasks')
-          .update({ 
-            status: 'cancelled',
-            tasker_id: null,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', booking.task_id)
-
-        if (taskError) {
-          console.warn('Failed to update task status:', taskError)
-          // Don't fail the whole operation if task update fails
-        } else {
-          console.log('Task status updated to cancelled:', booking.task_id)
-        }
-      }
-
+      // Refresh bookings after update
+      await fetchBookings()
       return true
     } catch (err: any) {
       console.error('Error cancelling booking:', err)
       throw err
     }
-    }
+  }
 
   const confirmBooking = async (bookingId: string) => {
     try {
-      // First get the booking details to find the task_id
-      const { data: booking, error: fetchError } = await supabase
-        .from('bookings')
-        .select('task_id')
+      // Update the task status directly since we're working with tasks table
+      const { error: taskError } = await supabase
+        .from('tasks')
+        .update({ 
+          status: 'in_progress',
+          updated_at: new Date().toISOString()
+        })
         .eq('id', bookingId)
-        .single()
 
-      if (fetchError) throw fetchError
+      if (taskError) throw taskError
 
-      // Update the booking status
-      await updateBookingStatus(bookingId, 'in_progress')
-
-      // Also update the task status to in_progress
-      if (booking?.task_id) {
-        const { error: taskError } = await supabase
-          .from('tasks')
-          .update({ 
-            status: 'in_progress',
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', booking.task_id)
-
-        if (taskError) {
-          console.warn('Failed to update task status:', taskError)
-          // Don't fail the whole operation if task update fails
-        } else {
-          console.log('Task status updated to in_progress:', booking.task_id)
-        }
-      }
-
+      // Refresh bookings after update
+      await fetchBookings()
       return true
     } catch (err: any) {
       console.error('Error confirming booking:', err)
@@ -234,37 +204,23 @@ export function useBookings() {
 
   const completeBooking = async (bookingId: string) => {
     try {
-      // First get the booking details to find the task_id
-      const { data: booking, error: fetchError } = await supabase
-        .from('bookings')
-        .select('task_id')
+      // Update the task status directly since we're working with tasks table
+      const { error: taskError } = await supabase
+        .from('tasks')
+        .update({ 
+          status: 'completed',
+          completed_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
         .eq('id', bookingId)
-        .single()
 
-      if (fetchError) throw fetchError
+      if (taskError) throw taskError
 
-      // Update the booking status
-      await updateBookingStatus(bookingId, 'completed')
+      // Delete associated chats when task is completed
+      await ChatCleanupService.deleteChatsForCompletedTask(bookingId)
 
-      // Also update the task status to completed
-      if (booking?.task_id) {
-        const { error: taskError } = await supabase
-          .from('tasks')
-          .update({ 
-            status: 'completed',
-            completed_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', booking.task_id)
-
-        if (taskError) {
-          console.warn('Failed to update task status:', taskError)
-          // Don't fail the whole operation if task update fails
-        } else {
-          console.log('Task status updated to completed:', booking.task_id)
-        }
-      }
-
+      // Refresh bookings after update
+      await fetchBookings()
       return true
     } catch (err: any) {
       console.error('Error completing booking:', err)
@@ -327,19 +283,38 @@ export function useBookings() {
 
       // Create a chat for the direct booking
       try {
-        const { error: chatError } = await supabase
+        // Check if chat already exists first
+        const { data: existingChat, error: checkError } = await supabase
           .from('chats')
-          .insert({
-            task_id: null, // Direct bookings don't have task_id
-            customer_id: bookingData.customer_id,
-            tasker_id: bookingData.technician_id
-          })
+          .select('*')
+          .is('task_id', null)
+          .eq('customer_id', bookingData.customer_id)
+          .eq('tasker_id', bookingData.technician_id)
+          .limit(1)
 
-        if (chatError) {
-          console.warn('Failed to create chat for direct booking:', chatError)
-          // Don't fail the whole operation if chat creation fails
+        if (checkError) {
+          console.warn('Error checking for existing chat:', checkError)
+        } else if (existingChat && existingChat.length > 0) {
+          console.log('Chat already exists for direct booking')
         } else {
-          console.log('Chat created successfully for direct booking:', booking.id)
+          // Create new chat
+          const { error: chatError } = await supabase
+            .from('chats')
+            .insert({
+              task_id: null, // Direct bookings don't have task_id
+              customer_id: bookingData.customer_id,
+              tasker_id: bookingData.technician_id
+            })
+
+          if (chatError) {
+            if (chatError.code === '23505') {
+              console.log('Chat already exists (duplicate key) for direct booking')
+            } else {
+              console.warn('Failed to create chat for direct booking:', chatError)
+            }
+          } else {
+            console.log('Chat created successfully for direct booking:', booking.id)
+          }
         }
       } catch (chatErr) {
         console.warn('Error creating chat for direct booking:', chatErr)

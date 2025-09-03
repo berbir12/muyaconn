@@ -28,7 +28,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const initializeAuth = async () => {
     try {
-      console.log('=== Initializing Auth ===')
+
       // Get session from Supabase
       const { data: { session }, error } = await supabase.auth.getSession()
       
@@ -38,21 +38,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return
       }
 
-      console.log('Session found:', !!session)
       if (session) {
-        console.log('User ID:', session.user.id)
-        console.log('User email:', session.user.email)
         setSession(session)
         setUser(session.user)
         await fetchProfile(session.user.id)
       } else {
-        console.log('No session found')
+
       }
       
       // Set up auth state listener
       const { data: { subscription } } = supabase.auth.onAuthStateChange(
         async (event, session) => {
-          console.log('Auth state change:', event, session?.user?.id)
+
           setSession(session)
           setUser(session?.user ?? null)
           
@@ -86,8 +83,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (error) {
         if (error.code === 'PGRST116') {
-          console.log('Profile not found for user:', userId)
-          console.log('This should not happen with the database trigger - setting profile to null')
+
           setProfile(null)
           return
         }
@@ -142,7 +138,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       // Check if signup was successful
       if (data.user) {
-        console.log('Signup successful:', data.user.email)
+
         return { success: true, user: data.user }
       } else {
         throw new Error('Signup failed - no user data returned')

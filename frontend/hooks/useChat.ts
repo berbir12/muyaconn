@@ -198,9 +198,33 @@ export function useChat() {
         }
       }
 
+      // First, check if a chat already exists with this combination
+      const { data: existingChats, error: checkError } = await supabase
+        .from('chats')
+        .select('*')
+        .eq('task_id', chatData.task_id)
+        .eq('customer_id', chatData.customer_id)
+        .eq('tasker_id', chatData.tasker_id)
+        .limit(1)
+
+      if (checkError) {
+        console.error('Error checking for existing chat:', checkError)
+        // Continue with creation attempt
+      } else if (existingChats && existingChats.length > 0) {
+
+        // Add to local state if not already there
+        setChats(prev => {
+          const exists = prev.some(chat => chat.id === existingChats[0].id)
+          return exists ? prev : [existingChats[0], ...prev]
+        })
+        return existingChats[0]
+      }
+
       const { data, error } = await supabase
         .from('chats')
-        .insert(chatData)
+        .insert({
+          ...chatData
+        })
         .select('*')
         .single()
 
@@ -209,6 +233,31 @@ export function useChat() {
         if (error.code === '42501') {
           setError('Chat functionality not available yet')
           return null
+        }
+        // Handle duplicate key error
+        if (error.code === '23505') {
+
+          // Try to fetch the existing chat
+          const { data: existingChat, error: fetchError } = await supabase
+            .from('chats')
+            .select('*')
+            .eq('task_id', chatData.task_id)
+            .eq('customer_id', chatData.customer_id)
+            .eq('tasker_id', chatData.tasker_id)
+            .single()
+
+          if (fetchError) {
+            console.error('Error fetching existing chat:', fetchError)
+            setError('Chat already exists but could not be retrieved')
+            return null
+          }
+
+          // Add to local state if not already there
+          setChats(prev => {
+            const exists = prev.some(chat => chat.id === existingChat.id)
+            return exists ? prev : [existingChat, ...prev]
+          })
+          return existingChat
         }
         throw error
       }
@@ -223,33 +272,40 @@ export function useChat() {
     }
   }, [profile, validateChatAccess])
 
-  // Send a message with validation
-  const sendMessage = useCallback(async (messageData: SendMessageRequest): Promise<ChatMessage | null> => {
-    if (!profile) return null
+  // Send a message with validation and enhanced message types
+  const sendMessage = useCallback(async (
+    message: string, 
+    messageType: string = 'text', 
+    fileUrl?: string, 
+    fileName?: string
+  ): Promise<ChatMessage | null> => {
+    if (!profile || !currentChat) return null
 
     try {
       setError(null)
 
-      // Find the chat to validate task status
-      const chat = chats.find(c => c.id === messageData.chat_id)
-      if (!chat) {
-        setError('Chat not found')
-        return null
-      }
-
       // Validate chat access before sending message
-      const validation = await validateChatAccess(chat.task_id || null)
+      const validation = await validateChatAccess(currentChat.task_id || null)
       if (!validation.can_chat) {
         setError(validation.reason || 'Cannot send message for this chat')
         return null
       }
 
+      const messageData = {
+        chat_id: currentChat.id,
+        message: message,
+        message_type: messageType,
+        file_url: fileUrl || null,
+        file_name: fileName || null,
+        file_size: null, // Could be added later for file size tracking
+        sender_id: profile.id
+      }
+
+
+
       const { data, error } = await supabase
         .from('chat_messages')
-        .insert({
-          ...messageData,
-          sender_id: profile.id
-        })
+        .insert(messageData)
         .select('*')
         .single()
 
@@ -261,6 +317,8 @@ export function useChat() {
         }
         throw error
       }
+
+
 
       // Add to local messages if we're in the current chat
       if (currentChat && messageData.chat_id === currentChat.id) {
@@ -275,10 +333,58 @@ export function useChat() {
           .eq('id', messageData.chat_id)
         
         if (updateError && updateError.code === '42501') {
-          console.log('Chat functionality not available yet')
+
         }
       } catch (err) {
         console.error('Error updating chat timestamp:', err)
+      }
+
+      // Send notification to the recipient
+      try {
+        // Get chat details to find the recipient
+        if (currentChat) {
+          // Determine who should receive the notification (the other person in the chat)
+          const recipientId = currentChat.customer_id === profile.id ? currentChat.tasker_id : currentChat.customer_id
+          
+          if (recipientId) {
+            // Get sender name for notification
+            const { data: senderData, error: senderError } = await supabase
+              .from('profiles')
+              .select('full_name, username')
+              .eq('id', profile.id)
+              .single()
+
+            if (!senderError && senderData) {
+              const senderName = senderData.full_name || senderData.username || 'Someone'
+              
+              // Get task title if it's a task-based chat
+              let taskTitle = null
+              if (currentChat.task_id) {
+                const { data: taskData, error: taskError } = await supabase
+                  .from('tasks')
+                  .select('title')
+                  .eq('id', currentChat.task_id)
+                  .single()
+                
+                if (!taskError && taskData) {
+                  taskTitle = taskData.title
+                }
+              }
+
+              // Import and call the notification service
+              const { NotificationService } = await import('../services/NotificationService')
+              await NotificationService.notifyMessageReceived(
+                recipientId,
+                senderName,
+                taskTitle || undefined
+              )
+
+            }
+          }
+        }
+      } catch (notificationError) {
+        console.error('Failed to send message notification:', notificationError)
+        // Don't fail the message sending if notification fails
       }
 
       // Refresh chats to update order
@@ -329,6 +435,7 @@ export function useChat() {
         throw error
       }
 
+
       setMessages(data || [])
 
       // Mark messages as read
@@ -352,7 +459,7 @@ export function useChat() {
         .is('read_at', null)
       
       if (error && error.code === '42501') {
-        console.log('Chat functionality not available yet')
+
         return
       }
     } catch (err) {

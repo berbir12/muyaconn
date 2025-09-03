@@ -8,6 +8,8 @@ import {
   TextInput,
   ScrollView,
   Alert,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import DateTimePicker from '@react-native-community/datetimepicker'
@@ -154,7 +156,11 @@ export default function TaskApplicationModal({
       presentationStyle="pageSheet"
       onRequestClose={onClose}
     >
-      <View style={styles.container}>
+      <KeyboardAvoidingView 
+        style={styles.container}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+      >
                  {/* Header */}
          <View style={styles.header}>
            <TouchableOpacity onPress={onClose} style={styles.closeButton}>
@@ -169,7 +175,11 @@ export default function TaskApplicationModal({
            <View style={styles.placeholder} />
          </View>
 
-        <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        <ScrollView 
+          style={styles.content} 
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
           {/* Task Info */}
           <View style={styles.taskInfo}>
             <Text style={styles.taskTitle}>{taskTitle}</Text>
@@ -295,7 +305,7 @@ export default function TaskApplicationModal({
           }}
         />
 
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   )
 }

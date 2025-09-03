@@ -152,8 +152,8 @@ export default function WorkProgressCard({
       <View style={styles.actionButtons}>
         {onChat && (
           <TouchableOpacity style={styles.chatButton} onPress={onChat}>
-            <Ionicons name="chatbubble" size={16} color={Colors.text.inverse} />
-            <Text style={styles.chatButtonText}>Chat</Text>
+            <Ionicons name="chatbubble" size={16} color={Colors.primary[500]} />
+            <Text style={styles.chatButtonText}>Message</Text>
           </TouchableOpacity>
         )}
         
@@ -294,14 +294,16 @@ const styles = StyleSheet.create({
   chatButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.primary[500],
+    backgroundColor: Colors.primary[50],
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.sm,
     borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: Colors.primary[200],
     gap: Spacing.xs,
   },
   chatButtonText: {
-    color: Colors.text.inverse,
+    color: Colors.primary[600],
     fontSize: Typography.fontSize.sm,
     fontWeight: Typography.fontWeight.medium,
   },

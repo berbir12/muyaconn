@@ -9,6 +9,7 @@ import {
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { supabase } from '../lib/supabase'
+import { ChatCleanupService } from '../services/ChatCleanupService'
 import Colors from '../constants/Colors'
 import { Spacing, BorderRadius, Typography } from '../constants/Design'
 import WorkflowManager from './WorkflowManager'
@@ -196,6 +197,9 @@ export default function WorkflowIntegration({
         .eq('id', workItem.id)
 
       if (error) throw error
+
+      // Delete associated chats when task is completed
+      await ChatCleanupService.deleteChatsForCompletedTask(workItem.id)
 
       // Update local status
       onStatusUpdate('completed')

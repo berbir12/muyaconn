@@ -34,20 +34,27 @@ export default function TaskDetail() {
   const [loadingApplications, setLoadingApplications] = useState(false)
 
   useEffect(() => {
+
     if (id && tasks.length > 0) {
       const task = tasks.find(t => t.id === id)
+
       if (task) {
         setSelectedTask(task)
-        fetchApplications(task.id)
+        // Only fetch applications if we have a profile and the task is owned by the current user
+        if (profile && task.customer_id === profile.id) {
+          fetchApplications(task.id)
+        }
       }
     }
   }, [id, tasks, profile])
 
   const fetchApplications = async (taskId: string) => {
-    console.log('fetchApplications called with taskId:', taskId)
-    console.log('Current profile:', profile)
-    if (!profile || (profile.role !== 'customer' && profile.role !== 'both')) {
-      console.log('fetchApplications early return - profile or role check failed')
+    if (!profile) {
+      return
+    }
+    
+    // Only fetch applications if the current user is the task owner
+    if (selectedTask && selectedTask.customer_id !== profile.id) {
       return
     }
     
@@ -55,7 +62,7 @@ export default function TaskDetail() {
       setLoadingApplications(true)
       
       // Fetch real applications from Supabase
-      console.log('Querying task_applications for task_id:', taskId)
+
       const { data: applicationsData, error } = await supabase
         .from('task_applications')
         .select(`
@@ -75,7 +82,7 @@ export default function TaskDetail() {
         .eq('task_id', taskId)
         .order('created_at', { ascending: false })
       
-      console.log('Supabase query result:', { data: applicationsData, error })
+
 
       if (error) {
         console.error('Error fetching applications:', error)
@@ -83,10 +90,10 @@ export default function TaskDetail() {
       }
 
       if (applicationsData) {
-        console.log('Fetched applications:', applicationsData)
+
         setApplications(applicationsData)
       } else {
-        console.log('No applications data received')
+
         setApplications([])
       }
     } catch (error) {
@@ -123,19 +130,38 @@ export default function TaskDetail() {
 
       // Create chat for the accepted task
       try {
-        const { error: chatError } = await supabase
+        // Check if chat already exists first
+        const { data: existingChat, error: checkError } = await supabase
           .from('chats')
-          .insert({
-            task_id: selectedTask.id,
-            customer_id: selectedTask.customer_id,
-            tasker_id: application.tasker_id
-          })
+          .select('*')
+          .eq('task_id', selectedTask.id)
+          .eq('customer_id', selectedTask.customer_id)
+          .eq('tasker_id', application.tasker_id)
+          .limit(1)
 
-        if (chatError) {
-          console.warn('Failed to create chat:', chatError)
-          // Don't fail the whole operation if chat creation fails
+        if (checkError) {
+          console.warn('Error checking for existing chat:', checkError)
+        } else if (existingChat && existingChat.length > 0) {
+          // Chat already exists, no need to create
         } else {
-          console.log('Chat created successfully for task:', selectedTask.id)
+          // Create new chat
+          const { error: chatError } = await supabase
+            .from('chats')
+            .insert({
+              task_id: selectedTask.id,
+              customer_id: selectedTask.customer_id,
+              tasker_id: application.tasker_id
+            })
+
+          if (chatError) {
+            if (chatError.code === '23505') {
+
+            } else {
+              console.warn('Failed to create chat:', chatError)
+            }
+          } else {
+
+          }
         }
       } catch (chatErr) {
         console.warn('Error creating chat:', chatErr)
@@ -151,11 +177,11 @@ export default function TaskDetail() {
       
       Alert.alert(
         '🎉 Application Accepted!',
-        `Great! The tasker will now work on your task. Here's what happens next:\n\n• The task has moved to your Bookings section\n• The tasker will contact you to discuss details\n• You can chat with them using the chat button\n• Track progress in the Bookings tab\n• Mark as complete when work is done`,
+        `Great! The tasker will now work on your task. Here's what happens next:\n\n• The tasker will contact you to discuss details\n• You can chat with them using the chat button\n• Track progress in your "My Tasks" tab\n• Mark as complete when work is done`,
         [
           {
-            text: 'View Bookings',
-            onPress: () => router.push('/bookings')
+            text: 'View My Tasks',
+            onPress: () => router.push('/jobs')
           },
           {
             text: 'Continue',
@@ -207,20 +233,22 @@ export default function TaskDetail() {
     setShowTaskerProfile(true)
   }
 
+
+
   if (loading) {
     return (
-      <SafeAreaView style={styles.container}>
+      <View style={styles.container}>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={Colors.primary[500]} />
           <Text style={styles.loadingText}>Loading task details...</Text>
         </View>
-      </SafeAreaView>
+      </View>
     )
   }
 
   if (error || !selectedTask) {
     return (
-      <SafeAreaView style={styles.container}>
+      <View style={styles.container}>
         <View style={styles.errorContainer}>
           <Ionicons name="alert-circle" size={48} color={Colors.error[500]} />
           <Text style={styles.errorText}>
@@ -230,12 +258,12 @@ export default function TaskDetail() {
             <Text style={styles.retryButtonText}>Retry</Text>
           </TouchableOpacity>
         </View>
-      </SafeAreaView>
+      </View>
     )
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container} key={`task-detail-${id}`}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity 
@@ -248,7 +276,11 @@ export default function TaskDetail() {
         <NotificationButton />
       </View>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView 
+        style={styles.content} 
+        contentContainerStyle={styles.contentContainer}
+        showsVerticalScrollIndicator={false}
+      >
         {/* Task Information */}
         <View style={styles.taskSection}>
           <Text style={styles.sectionTitle}>Task Information</Text>
@@ -323,7 +355,7 @@ export default function TaskDetail() {
         taskerProfile={selectedTaskerProfile}
         onClose={() => setShowTaskerProfile(false)}
       />
-    </SafeAreaView>
+    </View>
   )
 }
 
@@ -331,6 +363,8 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.background.primary,
+    width: '100%',
+    height: '100%',
   },
   header: {
     flexDirection: 'row',
@@ -341,6 +375,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: Colors.border.light,
     backgroundColor: Colors.background.secondary,
+    zIndex: 1000,
   },
   backButton: {
     padding: Spacing.xs,
@@ -354,7 +389,10 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
+  },
+  contentContainer: {
     padding: Spacing.md,
+    paddingBottom: Spacing.xl,
   },
   taskSection: {
     marginBottom: Spacing.lg,

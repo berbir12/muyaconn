@@ -81,7 +81,8 @@ export default function ChatInterface({
   const taskTitle = chatData?.task?.title || 'Untitled Task'
   const taskStatus = chatData?.task?.status || 'unknown'
   const otherUserName = otherUser?.full_name || 'Unknown User'
-  const isActive = chat.is_active
+  // Chat is active if explicitly marked as active OR if task status indicates it should be active
+  const isActive = chat.is_active || (taskStatus && !['completed', 'cancelled'].includes(taskStatus))
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -151,7 +152,20 @@ export default function ChatInterface({
             styles.messageText,
             isMyMessage ? styles.myMessageText : styles.otherMessageText
           ]}>
-            {item.message}
+            {(() => {
+              // Handle different message formats
+              if (typeof item.message === 'string') {
+                return item.message
+              } else if (typeof item.message === 'object' && item.message !== null) {
+                // If it's an object, try to extract the message field
+                if ('message' in item.message && typeof item.message.message === 'string') {
+                  return item.message.message
+                }
+                // Fallback to stringify if we can't extract the message
+                return JSON.stringify(item.message)
+              }
+              return String(item.message)
+            })()}
           </Text>
           
           <View style={[

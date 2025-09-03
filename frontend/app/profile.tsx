@@ -12,19 +12,25 @@ import {
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
+
+import * as ImagePicker from 'expo-image-picker'
 import { router } from 'expo-router'
 import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase'
 import { useNotifications } from '../hooks/useNotifications'
+import { ImageUploadService } from '../services/ImageUploadService'
+import { useUserReviewStats } from '../hooks/useRatings'
+import RatingDisplay from '../components/RatingDisplay'
 import Colors from '../constants/Colors'
 import { Spacing, BorderRadius, Typography } from '../constants/Design'
 import { useBookings } from '../hooks/useBookings'
-import NotificationButton from '../components/NotificationButton'
+
 import TaskerApplicationModal from '../components/TaskerApplicationModal'
 
 export default function Profile() {
   const { profile, user, refreshProfile, signOut } = useAuth()
   const { bookings, loading: bookingsLoading, error: bookingsError } = useBookings()
+  const { stats: reviewStats } = useUserReviewStats(user?.id || '')
   const [editing, setEditing] = useState(false)
   const [username, setUsername] = useState(profile?.username || '')
   const [fullName, setFullName] = useState(profile?.full_name || '')
@@ -41,6 +47,13 @@ export default function Profile() {
   const [languages, setLanguages] = useState(profile?.languages?.join(', ') || '')
   const [loading, setLoading] = useState(false)
   const [isTaskerApplicationModalVisible, setIsTaskerApplicationModalVisible] = useState(false)
+  const [avatarUri, setAvatarUri] = useState<string | null>(null)
+  const [taskerApplication, setTaskerApplication] = useState<any>(null)
+
+  // Clear avatarUri when profile changes (user switches)
+  useEffect(() => {
+    setAvatarUri(null)
+  }, [profile?.id])
 
   useEffect(() => {
     if (profile) {
@@ -59,6 +72,33 @@ export default function Profile() {
       setLanguages(profile.languages?.join(', ') || '')
     }
   }, [profile])
+
+  useEffect(() => {
+    if (user?.id) {
+      checkTaskerApplication()
+    }
+  }, [user?.id])
+
+  const checkTaskerApplication = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('tasker_applications')
+        .select('id, status, created_at')
+        .eq('user_id', user?.id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single()
+
+      if (error && error.code !== 'PGRST116') {
+        console.error('Error checking tasker application:', error)
+        return
+      }
+
+      setTaskerApplication(data)
+    } catch (error) {
+      console.error('Error checking tasker application:', error)
+    }
+  }
 
   const handleSave = async () => {
     if (!username || !fullName || !user) {
@@ -140,6 +180,125 @@ export default function Profile() {
     // But keeping it for potential future use
   }
 
+  const handleChangeAvatar = async () => {
+    if (!user) {
+      Alert.alert('Error', 'User not logged in.')
+      return
+    }
+
+    try {
+      // Request camera permissions
+      const { status } = await ImagePicker.requestCameraPermissionsAsync()
+      if (status !== 'granted') {
+        Alert.alert('Permission Required', 'Camera permission is required to take photos.')
+        return
+      }
+
+      // Show action sheet for camera or gallery
+      Alert.alert(
+        'Change Profile Photo',
+        'Choose how you want to update your profile photo',
+        [
+          {
+            text: 'Take Photo',
+            onPress: () => takeAvatarPhoto()
+          },
+          {
+            text: 'Choose from Gallery',
+            onPress: () => pickAvatarFromGallery()
+          },
+          {
+            text: 'Cancel',
+            style: 'cancel'
+          }
+        ]
+      )
+    } catch (error: any) {
+      console.error('Error changing avatar:', error)
+      Alert.alert('Error', 'Failed to change profile photo. Please try again.')
+    }
+  }
+
+  const takeAvatarPhoto = async () => {
+    try {
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      })
+
+      if (!result.canceled && result.assets[0]) {
+        const imageUri = result.assets[0].uri
+        setAvatarUri(imageUri)
+        
+        // Update profile with new avatar
+        await updateProfileAvatar(imageUri)
+        Alert.alert('Success', 'Profile photo updated successfully!')
+      }
+    } catch (error: any) {
+      console.error('Error taking avatar photo:', error)
+      Alert.alert('Error', 'Failed to take photo. Please try again.')
+    }
+  }
+
+  const pickAvatarFromGallery = async () => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      })
+
+      if (!result.canceled && result.assets[0]) {
+        const imageUri = result.assets[0].uri
+        setAvatarUri(imageUri)
+        
+        // Update profile with new avatar
+        await updateProfileAvatar(imageUri)
+        Alert.alert('Success', 'Profile photo updated successfully!')
+      }
+    } catch (error: any) {
+      console.error('Error picking avatar image:', error)
+      Alert.alert('Error', 'Failed to select image. Please try again.')
+    }
+  }
+
+  const updateProfileAvatar = async (imageUri: string) => {
+    try {
+      setLoading(true)
+      
+      // Upload image to Supabase Storage
+      const publicUrl = await ImageUploadService.uploadImage(
+        imageUri, 
+        'user-avatars', 
+        'profiles', 
+        `avatar_${user?.id}_${Date.now()}`
+      )
+      
+      // Update profile with the public URL
+      const { error } = await supabase
+        .from('profiles')
+        .update({ 
+          avatar_url: publicUrl,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', user?.id)
+
+      if (error) throw error
+
+      await refreshProfile()
+      // Clear the local avatarUri since we now have the URL in the profile
+      setAvatarUri(null)
+    } catch (error: any) {
+      console.error('Error updating profile avatar:', error)
+      Alert.alert('Error', 'Failed to update profile photo. Please try again.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   if (!profile) {
     return (
       <SafeAreaView style={styles.container}>
@@ -175,22 +334,22 @@ export default function Profile() {
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Notification Banner */}
-        <View style={styles.notificationContainer}>
-          <NotificationButton size={24} />
-        </View>
-        
         {/* Hero Profile Section */}
         <View style={styles.heroSection}>
           <View style={styles.avatarContainer}>
             <Image 
               source={{ 
-                uri: profile.avatar_url || 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
+                uri: avatarUri || profile.avatar_url || 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
               }} 
-              style={styles.avatar} 
+              style={styles.avatar}
+              key={`avatar-${profile?.id}`}
             />
             {editing && (
-              <TouchableOpacity style={styles.changePhotoButton}>
+              <TouchableOpacity 
+                style={styles.changePhotoButton}
+                onPress={handleChangeAvatar}
+                disabled={loading}
+              >
                 <Ionicons name="camera" size={20} color={Colors.text.inverse} />
               </TouchableOpacity>
             )}
@@ -608,7 +767,7 @@ export default function Profile() {
                 {bookings.length > 3 && (
                   <TouchableOpacity 
                     style={styles.viewAllButton}
-                    onPress={() => router.push('/bookings')}
+                    onPress={() => router.push('/jobs')}
                   >
                     <Text style={styles.viewAllText}>View All {bookings.length} Tasks</Text>
                     <Ionicons name="chevron-forward" size={16} color={Colors.primary[500]} />
@@ -653,17 +812,71 @@ export default function Profile() {
               <Text style={styles.cardTitle}>Become a Tasker</Text>
             </View>
             
-            <Text style={styles.becomeTaskerText}>
-              Want to earn money by helping others? Apply to become a verified tasker and start accepting tasks.
-            </Text>
-            
-            <TouchableOpacity 
-              style={styles.becomeTaskerButton}
-              onPress={() => setIsTaskerApplicationModalVisible(true)}
-            >
-              <Ionicons name="arrow-forward" size={20} color={Colors.text.inverse} />
-              <Text style={styles.becomeTaskerButtonText}>Apply Now</Text>
-            </TouchableOpacity>
+            {taskerApplication ? (
+              <View style={styles.applicationStatusContainer}>
+                <View style={styles.applicationStatusHeader}>
+                  <Ionicons 
+                    name={
+                      taskerApplication.status === 'approved' ? 'checkmark-circle' :
+                      taskerApplication.status === 'rejected' ? 'close-circle' :
+                      'time'
+                    } 
+                    size={24} 
+                    color={
+                      taskerApplication.status === 'approved' ? Colors.success[500] :
+                      taskerApplication.status === 'rejected' ? Colors.error[500] :
+                      Colors.warning[500]
+                    } 
+                  />
+                  <Text style={styles.applicationStatusTitle}>
+                    Application Status: {taskerApplication.status.charAt(0).toUpperCase() + taskerApplication.status.slice(1)}
+                  </Text>
+                </View>
+                
+                <Text style={styles.applicationStatusText}>
+                  {taskerApplication.status === 'pending' && 'Your application is under review. We will notify you once it is processed.'}
+                  {taskerApplication.status === 'approved' && 'Congratulations! Your application has been approved. You can now accept tasks.'}
+                  {taskerApplication.status === 'rejected' && 'Your application was not approved. You can reapply after addressing the feedback below.'}
+                </Text>
+                
+                {taskerApplication.status === 'rejected' && (
+                  <View style={styles.rejectionReasonContainer}>
+                    <Text style={styles.rejectionReasonTitle}>Rejection Reason:</Text>
+                    <Text style={styles.rejectionReasonText}>
+                      Your application was not approved. Please contact support for more details or reapply with improved information.
+                    </Text>
+                  </View>
+                )}
+                
+                <Text style={styles.applicationDate}>
+                  Applied on: {new Date(taskerApplication.created_at).toLocaleDateString()}
+                </Text>
+                
+                {taskerApplication.status === 'rejected' && (
+                  <TouchableOpacity 
+                    style={styles.reapplyButton}
+                    onPress={() => setIsTaskerApplicationModalVisible(true)}
+                  >
+                    <Ionicons name="refresh" size={20} color={Colors.text.inverse} />
+                    <Text style={styles.reapplyButtonText}>Reapply Now</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            ) : (
+              <>
+                <Text style={styles.becomeTaskerText}>
+                  Want to earn money by helping others? Apply to become a verified tasker and start accepting tasks.
+                </Text>
+                
+                <TouchableOpacity 
+                  style={styles.becomeTaskerButton}
+                  onPress={() => setIsTaskerApplicationModalVisible(true)}
+                >
+                  <Ionicons name="arrow-forward" size={20} color={Colors.text.inverse} />
+                  <Text style={styles.becomeTaskerButtonText}>Apply Now</Text>
+                </TouchableOpacity>
+              </>
+            )}
           </View>
         )}
 
@@ -681,11 +894,11 @@ export default function Profile() {
             
             <View style={styles.taskerStats}>
               <View style={styles.taskerStat}>
-                <Text style={styles.taskerStatNumber}>0</Text>
+                <Text style={styles.taskerStatNumber}>{profile?.completed_tasks || 0}</Text>
                 <Text style={styles.taskerStatLabel}>Tasks Completed</Text>
               </View>
               <View style={styles.taskerStat}>
-                <Text style={styles.taskerStatNumber}>0</Text>
+                <Text style={styles.taskerStatNumber}>{reviewStats?.total_reviews || 0}</Text>
                 <Text style={styles.taskerStatLabel}>Reviews</Text>
               </View>
               <View style={styles.taskerStat}>
@@ -694,6 +907,15 @@ export default function Profile() {
               </View>
             </View>
           </View>
+        )}
+
+        {/* Rating Display - Show for taskers and users with reviews */}
+        {(profile?.role === 'tasker' || profile?.role === 'both') && reviewStats && reviewStats.total_reviews > 0 && (
+          <RatingDisplay
+            stats={reviewStats}
+            showDetails={false}
+            style={styles.ratingCard}
+          />
         )}
 
         {/* Save Button (when editing) */}
@@ -722,6 +944,7 @@ export default function Profile() {
          onClose={() => setIsTaskerApplicationModalVisible(false)}
          onApplicationSubmitted={() => {
            setIsTaskerApplicationModalVisible(false)
+           checkTaskerApplication() // Refresh application status
            Alert.alert(
              'Application Submitted! 🎉',
              'Your tasker application has been submitted successfully. You will be notified once it is reviewed.',
@@ -795,11 +1018,7 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
   },
-  notificationContainer: {
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.md,
-    alignItems: 'flex-end',
-  },
+
   heroSection: {
     backgroundColor: Colors.background.primary,
     alignItems: 'center',
@@ -1196,6 +1415,9 @@ const styles = StyleSheet.create({
     marginRight: Spacing.sm,
   },
   // New styles for Become a Tasker and Tasker Status
+  ratingCard: {
+    marginTop: Spacing.md,
+  },
   becomeTaskerText: {
     fontSize: Typography.fontSize.md,
     color: Colors.text.secondary,
@@ -1247,5 +1469,68 @@ const styles = StyleSheet.create({
     fontSize: Typography.fontSize.sm,
     color: Colors.text.secondary,
     marginTop: Spacing.xs,
+  },
+  // Application status styles
+  applicationStatusContainer: {
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md,
+  },
+  applicationStatusHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: Spacing.sm,
+  },
+  applicationStatusTitle: {
+    fontSize: Typography.fontSize.md,
+    fontWeight: Typography.fontWeight.semibold,
+    color: Colors.text.primary,
+    marginLeft: Spacing.sm,
+  },
+  applicationStatusText: {
+    fontSize: Typography.fontSize.sm,
+    color: Colors.text.secondary,
+    lineHeight: 20,
+    marginBottom: Spacing.sm,
+  },
+  applicationDate: {
+    fontSize: Typography.fontSize.xs,
+    color: Colors.text.tertiary,
+    fontStyle: 'italic',
+  },
+  rejectionReasonContainer: {
+    backgroundColor: Colors.error[50],
+    borderWidth: 1,
+    borderColor: Colors.error[200],
+    borderRadius: BorderRadius.md,
+    padding: Spacing.md,
+    marginTop: Spacing.sm,
+    marginBottom: Spacing.sm,
+  },
+  rejectionReasonTitle: {
+    fontSize: Typography.fontSize.sm,
+    fontWeight: Typography.fontWeight.semibold,
+    color: Colors.error[700],
+    marginBottom: Spacing.xs,
+  },
+  rejectionReasonText: {
+    fontSize: Typography.fontSize.sm,
+    color: Colors.error[600],
+    lineHeight: 18,
+  },
+  reapplyButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.primary[500],
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    borderRadius: BorderRadius.md,
+    marginTop: Spacing.md,
+    gap: Spacing.xs,
+  },
+  reapplyButtonText: {
+    color: Colors.text.inverse,
+    fontSize: Typography.fontSize.sm,
+    fontWeight: Typography.fontWeight.semibold,
   },
 })

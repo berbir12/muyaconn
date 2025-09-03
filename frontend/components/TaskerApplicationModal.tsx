@@ -9,10 +9,14 @@ import {
   ScrollView,
   Alert,
   Switch,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
+import * as ImagePicker from 'expo-image-picker'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
+import { ImageUploadService } from '../services/ImageUploadService'
 import Colors from '../constants/Colors'
 import { Spacing, BorderRadius, Typography } from '../constants/Design'
 
@@ -59,7 +63,7 @@ export default function TaskerApplicationModal({
   const [whyTasker, setWhyTasker] = useState('')
   const [agreement, setAgreement] = useState(false)
 
-  const totalSteps = 4
+  const totalSteps = 3
 
   const validateStep = (step: number): boolean => {
     switch (step) {
@@ -76,14 +80,8 @@ export default function TaskerApplicationModal({
         }
         break
       case 3:
-        if (!nationalIdFront || !nationalIdBack) {
-          Alert.alert('Missing Documents', 'Please upload both front and back of your National ID for verification.')
-          return false
-        }
-        break
-      case 4:
-        if (!bio || !whyTasker || !agreement) {
-          Alert.alert('Missing Information', 'Please fill in all fields and agree to the terms.')
+        if (!nationalIdFront || !nationalIdBack || !agreement) {
+          Alert.alert('Missing Information', 'Please upload both front and back of your National ID and agree to the terms.')
           return false
         }
         break
@@ -95,26 +93,33 @@ export default function TaskerApplicationModal({
     if (profile?.id) {
       setLoading(true)
       try {
-        const { data, error } = await supabase.storage
-          .from('tasker_documents')
-          .upload(`${profile.id}/${side}_national_id.jpg`, new Blob([], { type: 'image/jpeg' }), {
-            contentType: 'image/jpeg',
-            upsert: false,
-          })
-
-        if (error) throw error
-        if (data) {
-          const { data: publicUrlData } = supabase.storage
-            .from('tasker_documents')
-            .getPublicUrl(`${profile.id}/${side}_national_id.jpg`)
-          if (publicUrlData) {
-            if (side === 'front') {
-              setNationalIdFront(publicUrlData.publicUrl)
-            } else {
-              setNationalIdBack(publicUrlData.publicUrl)
-            }
-          }
+        // Request camera permissions
+        const { status } = await ImagePicker.requestCameraPermissionsAsync()
+        if (status !== 'granted') {
+          Alert.alert('Permission Required', 'Camera permission is required to take photos of your ID.')
+          setLoading(false)
+          return
         }
+
+        // Show action sheet for camera or gallery
+        Alert.alert(
+          `Upload ${side === 'front' ? 'Front' : 'Back'} of ID`,
+          'Choose how you want to upload your ID',
+          [
+            {
+              text: 'Take Photo',
+              onPress: () => takePhoto(side)
+            },
+            {
+              text: 'Choose from Gallery',
+              onPress: () => pickFromGallery(side)
+            },
+            {
+              text: 'Cancel',
+              style: 'cancel'
+            }
+          ]
+        )
       } catch (error: any) {
         console.error('Error uploading document:', error)
         Alert.alert('Error', 'Failed to upload document. Please try again.')
@@ -126,26 +131,121 @@ export default function TaskerApplicationModal({
     }
   }
 
+  const takePhoto = async (side: 'front' | 'back') => {
+    try {
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.8,
+      })
+
+      if (!result.canceled && result.assets[0]) {
+        const imageUri = result.assets[0].uri
+        
+        // Upload image to Supabase Storage
+        setLoading(true)
+        try {
+          const publicUrl = await ImageUploadService.uploadImage(
+            imageUri, 
+            'tasker-documents', 
+            'applications', 
+            `national_id_${side}_${Date.now()}`
+          )
+          
+          if (side === 'front') {
+            setNationalIdFront(publicUrl)
+          } else {
+            setNationalIdBack(publicUrl)
+          }
+          
+          Alert.alert('Success', `${side === 'front' ? 'Front' : 'Back'} ID photo uploaded successfully!`)
+        } catch (uploadError: any) {
+          console.error('Error uploading photo:', uploadError)
+          Alert.alert('Upload Error', 'Photo captured but failed to upload. Please try again.')
+        } finally {
+          setLoading(false)
+        }
+      }
+    } catch (error: any) {
+      console.error('Error taking photo:', error)
+      Alert.alert('Error', 'Failed to take photo. Please try again.')
+    }
+  }
+
+  const pickFromGallery = async (side: 'front' | 'back') => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.8,
+      })
+
+      if (!result.canceled && result.assets[0]) {
+        const imageUri = result.assets[0].uri
+        
+        // Upload image to Supabase Storage
+        setLoading(true)
+        try {
+          const publicUrl = await ImageUploadService.uploadImage(
+            imageUri, 
+            'tasker-documents', 
+            'applications', 
+            `national_id_${side}_${Date.now()}`
+          )
+          
+          if (side === 'front') {
+            setNationalIdFront(publicUrl)
+          } else {
+            setNationalIdBack(publicUrl)
+          }
+          
+          Alert.alert('Success', `${side === 'front' ? 'Front' : 'Back'} ID photo uploaded successfully!`)
+        } catch (uploadError: any) {
+          console.error('Error uploading photo:', uploadError)
+          Alert.alert('Upload Error', 'Photo selected but failed to upload. Please try again.')
+        } finally {
+          setLoading(false)
+        }
+      }
+    } catch (error: any) {
+      console.error('Error picking image:', error)
+      Alert.alert('Error', 'Failed to select image. Please try again.')
+    }
+  }
+
   const handleUploadCertifications = async () => {
     if (profile?.id) {
       setLoading(true)
       try {
-        const { data, error } = await supabase.storage
-          .from('tasker_documents')
-          .upload(`${profile.id}/skill_certifications.zip`, new Blob([], { type: 'application/zip' }), {
-            contentType: 'application/zip',
-            upsert: false,
-          })
-
-        if (error) throw error
-        if (data) {
-          const { data: publicUrlData } = supabase.storage
-            .from('tasker_documents')
-            .getPublicUrl(`${profile.id}/skill_certifications.zip`)
-          if (publicUrlData) {
-            setSkillCertifications([publicUrlData.publicUrl])
-          }
+        // Request media library permissions
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync()
+        if (status !== 'granted') {
+          Alert.alert('Permission Required', 'Media library permission is required to select certification images.')
+          setLoading(false)
+          return
         }
+
+        // Show action sheet for camera or gallery
+        Alert.alert(
+          'Upload Certification',
+          'Choose how you want to upload your certification',
+          [
+            {
+              text: 'Take Photo',
+              onPress: () => takeCertificationPhoto()
+            },
+            {
+              text: 'Choose from Gallery',
+              onPress: () => pickCertificationFromGallery()
+            },
+            {
+              text: 'Cancel',
+              style: 'cancel'
+            }
+          ]
+        )
       } catch (error: any) {
         console.error('Error uploading certifications:', error)
         Alert.alert('Error', 'Failed to upload certifications. Please try again.')
@@ -154,6 +254,80 @@ export default function TaskerApplicationModal({
       }
     } else {
       Alert.alert('Error', 'User not logged in.')
+    }
+  }
+
+  const takeCertificationPhoto = async () => {
+    try {
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.8,
+      })
+
+      if (!result.canceled && result.assets[0]) {
+        const imageUri = result.assets[0].uri
+        
+        // Upload image to Supabase Storage
+        setLoading(true)
+        try {
+          const publicUrl = await ImageUploadService.uploadImage(
+            imageUri, 
+            'tasker-documents', 
+            'applications', 
+            `certification_${Date.now()}`
+          )
+          
+          setSkillCertifications([...skillCertifications, publicUrl])
+          Alert.alert('Success', 'Certification photo uploaded successfully!')
+        } catch (uploadError: any) {
+          console.error('Error uploading certification photo:', uploadError)
+          Alert.alert('Upload Error', 'Photo captured but failed to upload. Please try again.')
+        } finally {
+          setLoading(false)
+        }
+      }
+    } catch (error: any) {
+      console.error('Error taking certification photo:', error)
+      Alert.alert('Error', 'Failed to take photo. Please try again.')
+    }
+  }
+
+  const pickCertificationFromGallery = async () => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.8,
+      })
+
+      if (!result.canceled && result.assets[0]) {
+        const imageUri = result.assets[0].uri
+        
+        // Upload image to Supabase Storage
+        setLoading(true)
+        try {
+          const publicUrl = await ImageUploadService.uploadImage(
+            imageUri, 
+            'tasker-documents', 
+            'applications', 
+            `certification_${Date.now()}`
+          )
+          
+          setSkillCertifications([...skillCertifications, publicUrl])
+          Alert.alert('Success', 'Certification image uploaded successfully!')
+        } catch (uploadError: any) {
+          console.error('Error uploading certification image:', uploadError)
+          Alert.alert('Upload Error', 'Image selected but failed to upload. Please try again.')
+        } finally {
+          setLoading(false)
+        }
+      }
+    } catch (error: any) {
+      console.error('Error picking certification image:', error)
+      Alert.alert('Error', 'Failed to select image. Please try again.')
     }
   }
 
@@ -177,25 +351,73 @@ export default function TaskerApplicationModal({
     try {
       setLoading(true)
 
-      // Create tasker application record
-      const { error: applicationError } = await supabase
+      // Check if user already has an application
+      const { data: existingApplication, error: checkError } = await supabase
+        .from('tasker_applications')
+        .select('id, status')
+        .eq('user_id', profile?.id)
+        .single()
+
+      if (checkError && checkError.code !== 'PGRST116') {
+        // PGRST116 is "not found" error, which is expected if no application exists
+        console.error('Error checking existing application:', checkError)
+        throw checkError
+      }
+
+      if (existingApplication && existingApplication.status !== 'rejected') {
+        Alert.alert(
+          'Application Already Exists',
+          `You already have a tasker application with status: ${existingApplication.status}. You cannot submit multiple applications.`,
+          [{ text: 'OK' }]
+        )
+        return
+      }
+
+      // If user has a rejected application, allow them to reapply
+      if (existingApplication && existingApplication.status === 'rejected') {
+        Alert.alert(
+          'Previous Application Rejected',
+          'Your previous application was rejected. You can submit a new application to try again.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Continue', onPress: () => submitNewApplication() }
+          ]
+        )
+        return
+      }
+
+      // If no existing application or it's rejected, proceed with submission
+      await submitNewApplication()
+    } catch (error: any) {
+      console.error('Error submitting application:', error)
+      Alert.alert('Error', `Failed to submit application: ${error.message}`)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const submitNewApplication = async () => {
+    try {
+
+      // Simplified insert for testing
+      const { data, error: applicationError } = await supabase
         .from('tasker_applications')
         .insert({
           user_id: profile?.id,
           status: 'pending',
           personal_info: {
             full_name: fullName,
-            phone,
+            phone: phone,
             date_of_birth: dateOfBirth,
-            nationality,
+            nationality: nationality,
             id_number: idNumber,
           },
           professional_info: {
-            experience,
-            skills,
-            hourly_rate: parseFloat(hourlyRate),
-            availability,
-            preferred_categories: preferredCategories.split(',').map(cat => cat.trim()),
+            experience: experience,
+            skills: skills,
+            hourly_rate: parseFloat(hourlyRate) || 0,
+            availability: availability,
+            preferred_categories: preferredCategories ? preferredCategories.split(',').map(cat => cat.trim()) : [],
           },
           verification: {
             has_valid_id: hasValidId,
@@ -206,15 +428,54 @@ export default function TaskerApplicationModal({
             national_id_back: nationalIdBack,
             skill_certifications: skillCertifications,
           },
-          additional_info: {
-            bio,
-            why_tasker: whyTasker,
-          },
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
         })
+        .select()
 
-      if (applicationError) throw applicationError
+      if (applicationError) {
+        console.error('Supabase error details:', applicationError)
+        
+        // Handle duplicate key error specifically
+        if (applicationError.code === '23505') {
+          Alert.alert(
+            'Application Already Exists',
+            'You already have a tasker application. Please check your application status in your profile.',
+            [{ text: 'OK' }]
+          )
+          return
+        }
+        
+        throw applicationError
+      }
+
+      console.log('Application submitted successfully:', data)
+
+      // Send notification to admins about new tasker application
+      try {
+        const applicantName = fullName || 'A new applicant'
+        
+        // Get all admin users (you might want to adjust this query based on your admin system)
+        const { data: adminUsers, error: adminError } = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('role', 'admin')
+          .limit(10) // Limit to prevent too many notifications
+
+        if (!adminError && adminUsers && adminUsers.length > 0) {
+          const { NotificationService } = await import('../services/NotificationService')
+          
+          // Send notification to each admin
+          for (const admin of adminUsers) {
+            await NotificationService.notifyAdminNewTaskerApplication(
+              admin.id,
+              applicantName
+            )
+          }
+          console.log('Admin notifications sent for new tasker application')
+        }
+      } catch (notificationError) {
+        console.error('Failed to send admin notification:', notificationError)
+        // Don't fail the application submission if notification fails
+      }
 
       Alert.alert(
         'Application Submitted! 🎉',
@@ -232,7 +493,7 @@ export default function TaskerApplicationModal({
 
     } catch (error: any) {
       console.error('Error submitting application:', error)
-      Alert.alert('Error', 'Failed to submit application. Please try again.')
+      Alert.alert('Error', `Failed to submit application: ${error.message}`)
     } finally {
       setLoading(false)
     }
@@ -254,12 +515,12 @@ export default function TaskerApplicationModal({
               <Text style={styles.stepNumber}>{index + 1}</Text>
             )}
           </View>
-          <Text style={[
-            styles.stepLabel,
-            currentStep === index + 1 && styles.stepLabelActive
-          ]}>
-            {['Personal', 'Professional', 'Verification', 'Additional'][index]}
-          </Text>
+                     <Text style={[
+             styles.stepLabel,
+             currentStep === index + 1 && styles.stepLabelActive
+           ]}>
+             {['Personal', 'Professional', 'Verification'][index]}
+           </Text>
         </View>
       ))}
     </View>
@@ -487,50 +748,6 @@ export default function TaskerApplicationModal({
         />
       </View>
 
-      <View style={styles.infoBox}>
-        <Ionicons name="information-circle" size={20} color={Colors.primary[500]} />
-        <Text style={styles.infoText}>
-          Your National ID will be used for identity verification. Skill certifications help showcase your expertise. All documents are securely stored and only used for verification purposes.
-        </Text>
-      </View>
-    </View>
-  )
-
-  const renderAdditionalInfo = () => (
-    <View style={styles.stepContent}>
-      <Text style={styles.stepTitle}>Additional Information</Text>
-      <Text style={styles.stepDescription}>
-        Help us understand why you want to become a tasker and what makes you unique.
-      </Text>
-      
-      <View style={styles.field}>
-        <Text style={styles.fieldLabel}>Bio/About You *</Text>
-        <TextInput
-          style={[styles.input, styles.textArea]}
-          value={bio}
-          onChangeText={setBio}
-          placeholder="Tell us about yourself, your background, and what drives you..."
-          multiline
-          numberOfLines={4}
-          textAlignVertical="top"
-          placeholderTextColor={Colors.text.tertiary}
-        />
-      </View>
-
-      <View style={styles.field}>
-        <Text style={styles.fieldLabel}>Why do you want to be a tasker? *</Text>
-        <TextInput
-          style={[styles.input, styles.textArea]}
-          value={whyTasker}
-          onChangeText={setWhyTasker}
-          placeholder="What motivates you to help others with tasks? What do you hope to achieve?"
-          multiline
-          numberOfLines={4}
-          textAlignVertical="top"
-          placeholderTextColor={Colors.text.tertiary}
-        />
-      </View>
-
       <View style={styles.switchField}>
         <Text style={styles.switchLabel}>
           I agree to the terms and conditions and privacy policy *
@@ -544,9 +761,9 @@ export default function TaskerApplicationModal({
       </View>
 
       <View style={styles.infoBox}>
-        <Ionicons name="shield-checkmark" size={20} color={Colors.success[500]} />
+        <Ionicons name="information-circle" size={20} color={Colors.primary[500]} />
         <Text style={styles.infoText}>
-          Your information is secure and will only be used for verification purposes. We never share your personal data with third parties.
+          Your National ID will be used for identity verification. Skill certifications help showcase your expertise. All documents are securely stored and only used for verification purposes.
         </Text>
       </View>
     </View>
@@ -557,7 +774,6 @@ export default function TaskerApplicationModal({
       case 1: return renderPersonalInfo()
       case 2: return renderProfessionalInfo()
       case 3: return renderVerification()
-      case 4: return renderAdditionalInfo()
       default: return null
     }
   }
@@ -569,7 +785,11 @@ export default function TaskerApplicationModal({
       presentationStyle="pageSheet"
       onRequestClose={onClose}
     >
-      <View style={styles.container}>
+      <KeyboardAvoidingView 
+        style={styles.container}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+      >
         {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity onPress={onClose} style={styles.closeButton}>
@@ -585,7 +805,12 @@ export default function TaskerApplicationModal({
         {/* Step Indicator */}
         {renderStepIndicator()}
 
-        <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        <ScrollView 
+          style={styles.content} 
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={styles.scrollContent}
+        >
           {renderStepContent()}
         </ScrollView>
 
@@ -619,7 +844,7 @@ export default function TaskerApplicationModal({
             </TouchableOpacity>
           )}
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   )
 }
@@ -700,6 +925,10 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     paddingHorizontal: Spacing.lg,
+  },
+  scrollContent: {
+    flexGrow: 1,
+    paddingBottom: Spacing.xl,
   },
   stepContent: {
     paddingVertical: Spacing.lg,
