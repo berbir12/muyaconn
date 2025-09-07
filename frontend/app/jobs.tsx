@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect, useMemo, useCallback } from 'react'
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   SafeAreaView,
   Alert,
   ActivityIndicator,
+  ScrollView,
 } from 'react-native'
 import { supabase } from '../lib/supabase'
 import { Ionicons } from '@expo/vector-icons'
@@ -18,6 +19,8 @@ import { useTasks } from '../hooks/useTasks'
 import { useCategories } from '../hooks/useCategories'
 import Colors from '../constants/Colors'
 import { Spacing, BorderRadius, Typography } from '../constants/Design'
+import { TaskListSkeleton } from '../components/LoadingSkeleton'
+import FloatingActionButton from '../components/FloatingActionButton'
 import TaskCard from '../components/TaskCard'
 import TaskApplicationModal from '../components/TaskApplicationModal'
 import TaskApplicationCard from '../components/TaskApplicationCard'
@@ -25,10 +28,12 @@ import TaskerProfileModal from '../components/TaskerProfileModal'
 import NotificationButton from '../components/NotificationButton'
 import SimpleChatModal from '../components/SimpleChatModal'
 import SearchFilter, { SearchFilters } from '../components/SearchFilter'
+import CompletedTaskCard from '../components/CompletedTaskCard'
+import EditTaskModal from '../components/EditTaskModal'
 
 export default function Jobs() {
   const { profile } = useAuth()
-  const { tasks, loading, error, refetch } = useTasks()
+  const { tasks, loading, error, refetch, editTask, deleteTask, testDeletePermission } = useTasks()
   const { categories } = useCategories()
   
   const [viewMode, setViewMode] = useState<'available' | 'my-tasks'>('available')
@@ -43,6 +48,8 @@ export default function Jobs() {
   const [loadingApplications, setLoadingApplications] = useState(false)
   const [showChatModal, setShowChatModal] = useState(false)
   const [currentChatId, setCurrentChatId] = useState<string>('')
+  const [showEditModal, setShowEditModal] = useState(false)
+  const [editingTask, setEditingTask] = useState<any>(null)
   const [currentTaskId, setCurrentTaskId] = useState<string>('')
   const [currentCustomerId, setCurrentCustomerId] = useState<string>('')
   const [currentTaskerId, setCurrentTaskerId] = useState<string>('')
@@ -75,7 +82,7 @@ export default function Jobs() {
     }
   }
 
-  const fetchUserApplications = async () => {
+  const fetchUserApplications = useCallback(async () => {
     if (!profile) {
 
       setUserApplications(new Set())
@@ -115,7 +122,7 @@ export default function Jobs() {
       console.error('Error fetching user applications:', error)
       setUserApplications(new Set()) // Clear on error
     }
-  }
+  }, [profile])
 
   useEffect(() => {
     if (profile) {
@@ -576,8 +583,8 @@ export default function Jobs() {
   }
 
   const handleCloseChatDialog = () => {
-    setShowChatDialog(false)
-    setCurrentChat(null)
+    setShowChatModal(false)
+    setCurrentChatId('')
     // Note: selectChat expects a Chat object, so we can't pass null
     // The chat will be deselected when a new chat is selected or when the component unmounts
   }
@@ -591,18 +598,8 @@ export default function Jobs() {
   }
 
   const handleEditTask = (task: any) => {
-    // Navigate to edit task page or open edit modal
-
-    // For now, we'll navigate to the post-task page with the task data
-    // In a full implementation, you'd want a dedicated edit task page
-    router.push({
-      pathname: '/post-task',
-      params: { 
-        editMode: 'true',
-        taskId: task.id,
-        taskData: JSON.stringify(task)
-      }
-    })
+    setEditingTask(task)
+    setShowEditModal(true)
   }
 
   const handleDeleteTask = async (task: any) => {
@@ -616,35 +613,35 @@ export default function Jobs() {
           style: 'destructive',
           onPress: async () => {
             try {
-              // Check if task has applications or is in progress
-              if (task.tasker_id || task.status === 'in_progress') {
-                Alert.alert(
-                  'Cannot Delete',
-                  'This task cannot be deleted because it has been assigned to a tasker or is currently in progress.',
-                  [{ text: 'OK' }]
-                )
-                return
-              }
-
-              // Delete the task
-              const { error } = await supabase
-                .from('tasks')
-                .delete()
-                .eq('id', task.id)
-
-              if (error) {
-                console.error('Error deleting task:', error)
-                Alert.alert('Error', 'Failed to delete task. Please try again.')
-                return
-              }
-
-              Alert.alert('Success', 'Task deleted successfully.')
+              console.log('Starting delete process for task:', task)
+              console.log('Task ID:', task.id)
+              console.log('Task status:', task.status)
+              console.log('Task tasker_id:', task.tasker_id)
+              console.log('Current user ID:', profile?.id)
+              console.log('Task customer_id:', task.customer_id)
               
-              // Refresh the tasks list
-              await refetch()
+              // First test permissions
+              console.log('Testing delete permissions...')
+              const permissionTest = await testDeletePermission(task.id)
+              console.log('Permission test result:', permissionTest)
+              
+              if (!permissionTest.success) {
+                Alert.alert('Permission Error', `Cannot delete task: ${permissionTest.error}`)
+                return
+              }
+              
+              // If permissions are OK, proceed with actual delete
+              await deleteTask(task.id)
+              Alert.alert('Success', 'Task deleted successfully.')
             } catch (error: any) {
               console.error('Error deleting task:', error)
-              Alert.alert('Error', 'Failed to delete task. Please try again.')
+              console.error('Error details:', {
+                message: error.message,
+                code: error.code,
+                details: error.details,
+                hint: error.hint
+              })
+              Alert.alert('Error', error.message || 'Failed to delete task. Please try again.')
             }
           }
         }
@@ -652,7 +649,13 @@ export default function Jobs() {
     )
   }
 
-  const renderTask = ({ item }: { item: any }) => {
+  const renderTask = ({ item, index }: { item: any; index: number }) => {
+    // Safety check for item data
+    if (!item || !item.id) {
+      console.warn('Invalid task item:', item)
+      return null
+    }
+    
     const isOwner = profile?.id === item.customer_id
     const hasApplied = userApplications.has(item.id)
     
@@ -674,8 +677,24 @@ export default function Jobs() {
       ))
     )
     
+    // Show completed task card for completed tasks in "My Tasks" view
+    if (isOwner && item.status === 'completed' && viewMode === 'my-tasks') {
+      return (
+        <CompletedTaskCard
+          task={item}
+          onRatingSubmitted={() => refetch()}
+          customer={{
+            email: profile?.email || '',
+            full_name: profile?.full_name || '',
+            phone: profile?.phone || ''
+          }}
+        />
+      )
+    }
+    
     return (
       <TaskCard
+        key={item.id}
         task={item}
         showActions={true}
         isOwner={isOwner}
@@ -685,6 +704,7 @@ export default function Jobs() {
         onDeleteTask={isOwner && !item.tasker_id && item.status === 'open' ? () => handleDeleteTask(item) : undefined}
         hasApplied={hasApplied}
         onStartChat={canChat ? () => handleStartChat(item) : undefined}
+        index={index}
       />
     )
   }
@@ -763,20 +783,20 @@ export default function Jobs() {
     let baseTasks = []
     
     if (viewMode === 'my-tasks') {
-      // Show tasks created by the current user, excluding completed tasks
+      // Show tasks created by the current user, including completed tasks
       baseTasks = tasks.filter(task => {
+        if (!task || !task.id) return false
         const isOwner = task.customer_id === profile?.id
-        const isNotCompleted = task.status !== 'completed'
-
-        return isOwner && isNotCompleted
+        return isOwner
       })
 
     } else {
       // Available Jobs: Show tasks that are available for application
       baseTasks = tasks.filter(task => {
+        if (!task || !task.id) return false
+        
         // Don't show user's own tasks
         if (task.customer_id === profile?.id) {
-
           return false
         }
         
@@ -800,6 +820,48 @@ export default function Jobs() {
 
     return baseTasks
   }, [tasks, viewMode, profile?.id, searchFilters])
+
+  // Show loading state with skeleton
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>
+            {viewMode === 'available' ? 'Available Jobs' : 'My Tasks'}
+          </Text>
+          <NotificationButton size={20} />
+        </View>
+        <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+          <View style={styles.listContainer}>
+            <TaskListSkeleton count={5} />
+          </View>
+        </ScrollView>
+      </SafeAreaView>
+    )
+  }
+
+  // Show error state
+  if (error) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>
+            {viewMode === 'available' ? 'Available Jobs' : 'My Tasks'}
+          </Text>
+          <NotificationButton size={20} />
+        </View>
+        <View style={styles.errorContainer}>
+          <Ionicons name="alert-circle" size={48} color={Colors.error[500]} />
+          <Text style={styles.errorTitle}>Error Loading Tasks</Text>
+          <Text style={styles.errorMessage}>{error}</Text>
+          <TouchableOpacity style={styles.retryButton} onPress={refetch}>
+            <Ionicons name="refresh" size={20} color="#fff" />
+            <Text style={styles.retryButtonText}>Try Again</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    )
+  }
 
   return (
     <SafeAreaView style={styles.container}>
@@ -829,16 +891,16 @@ export default function Jobs() {
         categories={categories}
       />
 
-      {/* View Mode Toggle for Customers and Both Roles */}
-      {(profile?.role === 'customer' || profile?.role === 'both') && (
+      {/* View Mode Toggle for All Users */}
+      {profile?.role && (
         <View style={styles.viewModeContainer}>
-                     <TouchableOpacity
-             style={[
-               styles.viewModeButton,
-               viewMode === 'available' && styles.viewModeButtonActive
-             ]}
-             onPress={() => setViewMode('available')}
-           >
+          <TouchableOpacity
+            style={[
+              styles.viewModeButton,
+              viewMode === 'available' && styles.viewModeButtonActive
+            ]}
+            onPress={() => setViewMode('available')}
+          >
             <Ionicons 
               name="globe" 
               size={16} 
@@ -852,13 +914,13 @@ export default function Jobs() {
             </Text>
           </TouchableOpacity>
           
-                     <TouchableOpacity
-             style={[
-               styles.viewModeButton,
-               viewMode === 'my-tasks' && styles.viewModeButtonActive
-             ]}
-             onPress={() => setViewMode('my-tasks')}
-           >
+          <TouchableOpacity
+            style={[
+              styles.viewModeButton,
+              viewMode === 'my-tasks' && styles.viewModeButtonActive
+            ]}
+            onPress={() => setViewMode('my-tasks')}
+          >
             <Ionicons 
               name="briefcase" 
               size={16} 
@@ -897,8 +959,22 @@ export default function Jobs() {
         contentContainerStyle={styles.listContainer}
         showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl refreshing={loading} onRefresh={refetch} />
+          <RefreshControl 
+            refreshing={loading} 
+            onRefresh={refetch}
+            tintColor={Colors.primary[500]}
+            colors={[Colors.primary[500]]}
+          />
         }
+        initialNumToRender={5}
+        maxToRenderPerBatch={10}
+        windowSize={10}
+        removeClippedSubviews={true}
+        getItemLayout={(data, index) => ({
+          length: 200, // Approximate height of each task card
+          offset: 200 * index,
+          index,
+        })}
         ListEmptyComponent={
           <View style={styles.emptyState}>
             <Ionicons name="briefcase-outline" size={64} color={Colors.neutral[300]} />
@@ -928,7 +1004,7 @@ export default function Jobs() {
           visible={showApplicationModal}
           onClose={handleCloseApplicationModal}
           taskId={selectedTask.id}
-          taskTitle={selectedTask.title}
+          taskTitle={selectedTask?.title || 'Untitled Task'}
           budget={selectedTask.budget || 0}
           onApplicationSubmitted={handleApplicationSubmitted}
         />
@@ -996,6 +1072,30 @@ export default function Jobs() {
         taskerId={currentTaskerId}
         onClose={handleCloseChatModal}
       />
+
+      {/* Floating Action Button */}
+      <FloatingActionButton />
+
+      {/* Edit Task Modal */}
+      {showEditModal && editingTask && (
+        <EditTaskModal
+          task={editingTask}
+          onClose={() => {
+            setShowEditModal(false)
+            setEditingTask(null)
+          }}
+          onSave={async (updatedTask) => {
+            try {
+              await editTask(editingTask.id, updatedTask)
+              setShowEditModal(false)
+              setEditingTask(null)
+              Alert.alert('Success', 'Task updated successfully.')
+            } catch (error: any) {
+              Alert.alert('Error', error.message || 'Failed to update task.')
+            }
+          }}
+        />
+      )}
     </SafeAreaView>
   )
 }
@@ -1069,6 +1169,9 @@ const styles = StyleSheet.create({
   viewModeButtonTextActive: {
     color: Colors.text.inverse,
   },
+  scrollView: {
+    flex: 1,
+  },
   listContainer: {
     paddingHorizontal: Spacing.lg,
     paddingBottom: Spacing.xl,
@@ -1091,6 +1194,53 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: Spacing.sm,
     lineHeight: 22,
+  },
+  loadingContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: Spacing.xxxl,
+  },
+  loadingText: {
+    fontSize: Typography.fontSize.md,
+    color: Colors.text.secondary,
+    marginTop: Spacing.md,
+  },
+  errorContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: Spacing.xxxl,
+    paddingHorizontal: Spacing.lg,
+  },
+  errorTitle: {
+    fontSize: Typography.fontSize.lg,
+    fontWeight: Typography.fontWeight.semibold,
+    color: Colors.text.primary,
+    marginTop: Spacing.md,
+    textAlign: 'center',
+  },
+  errorMessage: {
+    fontSize: Typography.fontSize.md,
+    color: Colors.text.secondary,
+    textAlign: 'center',
+    marginTop: Spacing.sm,
+    lineHeight: 22,
+  },
+  retryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.primary[500],
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.lg,
+    borderRadius: BorderRadius.md,
+    marginTop: Spacing.lg,
+    gap: Spacing.sm,
+  },
+  retryButtonText: {
+    fontSize: Typography.fontSize.md,
+    fontWeight: Typography.fontWeight.medium,
+    color: Colors.text.inverse,
   },
   modalOverlay: {
     position: 'absolute',
@@ -1127,16 +1277,6 @@ const styles = StyleSheet.create({
   applicationsList: {
     padding: Spacing.lg,
   },
-  loadingContainer: {
-    alignItems: 'center',
-    paddingVertical: Spacing.xl,
-  },
-  loadingText: {
-    fontSize: Typography.fontSize.md,
-    fontWeight: Typography.fontWeight.regular,
-    color: Colors.text.secondary,
-    marginTop: Spacing.sm,
-  },
   activeFiltersContainer: {
     backgroundColor: Colors.primary[50],
     borderBottomWidth: 1,
@@ -1163,18 +1303,6 @@ const styles = StyleSheet.create({
     fontSize: Typography.fontSize.sm,
     color: Colors.primary[600],
     fontWeight: Typography.fontWeight.medium,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: Spacing.xl,
-  },
-  loadingText: {
-    marginTop: Spacing.md,
-    fontSize: Typography.fontSize.md,
-    color: Colors.text.secondary,
-    textAlign: 'center',
   },
 
 })

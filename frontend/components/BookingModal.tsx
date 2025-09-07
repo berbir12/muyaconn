@@ -13,6 +13,8 @@ import {
 import { Ionicons } from '@expo/vector-icons'
 import { useAuth } from '../contexts/AuthContext'
 import { useBookings } from '../hooks/useBookings'
+import DatePicker from './ui/DatePicker'
+import TimePicker from './ui/TimePicker'
 import Colors from '../constants/Colors'
 
 interface Tasker {
@@ -49,8 +51,8 @@ export default function BookingModal({ visible, tasker, onClose, onSuccess }: Bo
   const [serviceName, setServiceName] = useState('')
   const [serviceDescription, setServiceDescription] = useState('')
   const [agreedPrice, setAgreedPrice] = useState('')
-  const [bookingDate, setBookingDate] = useState('')
-  const [startTime, setStartTime] = useState('')
+  const [bookingDate, setBookingDate] = useState<Date>(new Date())
+  const [startTime, setStartTime] = useState<Date>(new Date())
   const [estimatedHours, setEstimatedHours] = useState('')
   const [customerNotes, setCustomerNotes] = useState('')
   const [loading, setLoading] = useState(false)
@@ -119,24 +121,24 @@ export default function BookingModal({ visible, tasker, onClose, onSuccess }: Bo
       return
     }
 
-    // Validate date format (YYYY-MM-DD)
-    const dateRegex = /^\d{4}-\d{2}-\d{2}$/
-    if (!dateRegex.test(bookingDate)) {
-      Alert.alert('Error', 'Please enter date in YYYY-MM-DD format')
-      return
-    }
-
     // Validate that booking date is not in the past
-    const selectedDate = new Date(bookingDate)
     const today = new Date()
     today.setHours(0, 0, 0, 0)
-    if (selectedDate < today) {
+    if (bookingDate < today) {
       Alert.alert('Error', 'Booking date cannot be in the past')
       return
     }
 
     setLoading(true)
     try {
+      // Format date and time for database
+      const formattedDate = bookingDate.toISOString().split('T')[0] // YYYY-MM-DD
+      const formattedTime = startTime.toLocaleTimeString('en-US', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+      }) // HH:MM
+
       const finalBookingData = {
         customer_id: profile.id,
         technician_id: tasker.profile_id,
@@ -145,8 +147,8 @@ export default function BookingModal({ visible, tasker, onClose, onSuccess }: Bo
         base_price: Number(tasker.hourly_rate || 0),
         agreed_price: Number(agreedPrice),
         price_type: 'hourly' as const,
-        booking_date: bookingDate,
-        start_time: startTime,
+        booking_date: formattedDate,
+        start_time: formattedTime,
         estimated_duration_hours: estimatedHours ? Number(estimatedHours) : undefined,
         city: tasker.city || undefined,
         state: tasker.state || undefined,
@@ -163,8 +165,8 @@ export default function BookingModal({ visible, tasker, onClose, onSuccess }: Bo
       setServiceName('')
       setServiceDescription('')
       setAgreedPrice('')
-      setBookingDate('')
-      setStartTime('')
+      setBookingDate(new Date())
+      setStartTime(new Date())
       setEstimatedHours('')
       setCustomerNotes('')
     } catch (error: any) {
@@ -320,25 +322,23 @@ export default function BookingModal({ visible, tasker, onClose, onSuccess }: Bo
             </View>
 
             <View style={styles.fieldContainer}>
-              <Text style={styles.fieldLabel}>Booking Date *</Text>
-              <TextInput
-                style={styles.input}
+              <DatePicker
                 value={bookingDate}
-                onChangeText={setBookingDate}
-                placeholder="YYYY-MM-DD"
-                placeholderTextColor={Colors.text.tertiary}
+                onChange={setBookingDate}
+                label="Booking Date"
+                placeholder="Select date"
+                minimumDate={new Date()}
+                required
               />
-              <Text style={styles.helpText}>Enter date in YYYY-MM-DD format (e.g., 2025-01-15)</Text>
             </View>
 
             <View style={styles.fieldContainer}>
-              <Text style={styles.fieldLabel}>Start Time *</Text>
-              <TextInput
-                style={styles.input}
+              <TimePicker
                 value={startTime}
-                onChangeText={setStartTime}
-                placeholder="e.g., 09:00 AM"
-                placeholderTextColor={Colors.text.tertiary}
+                onChange={setStartTime}
+                label="Start Time"
+                placeholder="Select time"
+                required
               />
             </View>
 

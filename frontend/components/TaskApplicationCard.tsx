@@ -202,7 +202,7 @@ export default function TaskApplicationCard({
             onPress={handleAccept}
             disabled={loading}
           >
-            <Ionicons name="checkmark" size={16} color={Colors.success[500]} />
+            <Ionicons name="checkmark-circle" size={16} color={Colors.success[500]} />
             <Text style={styles.acceptText}>Accept</Text>
           </TouchableOpacity>
         </View>

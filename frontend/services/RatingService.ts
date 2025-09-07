@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase'
+import { TransactionService } from './TransactionService'
 
 export interface Review {
   id: string
@@ -198,36 +199,26 @@ export class RatingService {
         throw new Error('You cannot review this task')
       }
 
-      // Create the review
-      const { data: review, error: reviewError } = await supabase
-        .from('reviews')
-        .insert({
+      // Prepare criteria data if provided
+      const criteriaData = reviewData.criteria?.map(criteria => ({
+        criteria_name: criteria.criteria_name,
+        rating: criteria.rating
+      }))
+
+      // Use transaction service for atomic operation
+      const result = await TransactionService.createReview(
+        {
           task_id: reviewData.task_id,
           reviewee_id: reviewData.reviewee_id,
           rating: reviewData.rating,
           review_text: reviewData.review_text,
           review_type: reviewData.review_type || 'customer_to_tasker'
-        })
-        .select()
-        .single()
+        },
+        criteriaData
+      )
 
-      if (reviewError) throw reviewError
-
-      // Add criteria if provided
-      if (reviewData.criteria && reviewData.criteria.length > 0) {
-        const criteriaData = reviewData.criteria.map(criteria => ({
-          review_id: review.id,
-          criteria_name: criteria.criteria_name,
-          rating: criteria.rating
-        }))
-
-        const { error: criteriaError } = await supabase
-          .from('review_criteria')
-          .insert(criteriaData)
-
-        if (criteriaError) {
-          console.warn('Failed to add review criteria:', criteriaError)
-        }
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to create review')
       }
 
       // Fetch the complete review with joined data

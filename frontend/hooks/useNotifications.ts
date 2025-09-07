@@ -286,10 +286,12 @@ export const useNotifications = () => {
     }
   }, [profile?.id])
 
-  // Initial fetch
+  // Initial fetch with stable dependencies
   useEffect(() => {
-    fetchNotifications()
-  }, [fetchNotifications])
+    if (profile?.id) {
+      fetchNotifications()
+    }
+  }, [profile?.id]) // Remove fetchNotifications from dependencies to prevent infinite loops
 
   return {
     notifications,

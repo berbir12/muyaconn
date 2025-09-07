@@ -11,6 +11,8 @@ import uuid
 from datetime import datetime
 from supabase import create_client, Client
 import jwt
+from auth_service import AuthService
+from payment_routes import router as payment_router
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -23,6 +25,7 @@ SUPABASE_SERVICE_ROLE_KEY = os.environ.get('SUPABASE_SERVICE_ROLE_KEY')
 supabase: Client = None
 supabase_admin: Client = None
 supabase_available = False
+auth_service: AuthService = None
 
 if supabase_url and supabase_key:
     try:
@@ -32,6 +35,7 @@ if supabase_url and supabase_key:
         # Test connection with a simple query
         response = supabase.from_('profiles').select('id').limit(1).execute()
         supabase_available = True
+        auth_service = AuthService(supabase)
         print("✅ Supabase client initialized and connected successfully")
     except Exception as e:
         print(f"⚠️ Supabase connection failed: {e}")
@@ -39,9 +43,11 @@ if supabase_url and supabase_key:
         supabase = None
         supabase_admin = None
         supabase_available = False
+        auth_service = None
 else:
     print("⚠️ Supabase credentials not found, using fallback mode")
     supabase_available = False
+    auth_service = None
 
 # Mock data for when Supabase is unavailable
 MOCK_CATEGORIES = [
@@ -224,35 +230,205 @@ class CreateBooking(BaseModel):
 # Authentication dependency
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
     try:
-        # For now, we'll use a simple token validation
-        # In production, you'd validate the JWT token properly
-        token = credentials.credentials
+        if not auth_service:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Authentication service unavailable"
+            )
         
-        # Simple validation - in production, decode and validate JWT
+        token = credentials.credentials
         if not token:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid token"
+                detail="No token provided"
             )
-            
-        # For demo purposes, extract user ID from token
-        # In production, decode JWT and extract user info
-        return {
-            "id": "demo-user-id",
-            "email": "demo@example.com",
-            "role": "customer"
-        }
         
+        # Verify token and get user info
+        user = await auth_service.get_user_by_token(token)
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token or user not found"
+            )
+        
+        return user
+        
+    except HTTPException:
+        raise
     except Exception as e:
+        logger.error(f"Authentication error: {e}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token"
+            detail="Authentication failed"
         )
+
+# Role-based access control
+def require_role(required_role: str):
+    def role_checker(current_user: dict = Depends(get_current_user)):
+        if not auth_service:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Authentication service unavailable"
+            )
+        
+        user_role = current_user.get("role", "customer")
+        if not auth_service.check_permission(user_role, required_role):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Insufficient permissions. Required role: {required_role}"
+            )
+        
+        return current_user
+    return role_checker
+
+# Authentication Models
+class LoginRequest(BaseModel):
+    email: EmailStr
+    password: str
+
+class RegisterRequest(BaseModel):
+    email: EmailStr
+    password: str
+    full_name: str
+    username: str
+    phone: Optional[str] = None
+
+class TokenResponse(BaseModel):
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"
+    user: Dict[str, Any]
 
 # Routes
 @api_router.get("/")
 async def root():
     return {"message": "SkillHub API", "version": "1.0.0"}
+
+@api_router.post("/auth/login", response_model=TokenResponse)
+async def login(login_data: LoginRequest):
+    """Authenticate user and return tokens"""
+    if not auth_service:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Authentication service unavailable"
+        )
+    
+    user = await auth_service.authenticate_user(login_data.email, login_data.password)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid credentials"
+        )
+    
+    # Create tokens
+    token_data = {
+        "sub": user["id"],
+        "email": user["email"],
+        "role": user["profile"].get("role", "customer")
+    }
+    
+    access_token = auth_service.create_access_token(token_data)
+    refresh_token = auth_service.create_refresh_token(token_data)
+    
+    return TokenResponse(
+        access_token=access_token,
+        refresh_token=refresh_token,
+        user=user
+    )
+
+@api_router.post("/auth/register", response_model=TokenResponse)
+async def register(register_data: RegisterRequest):
+    """Register new user and return tokens"""
+    if not auth_service or not supabase:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Authentication service unavailable"
+        )
+    
+    try:
+        # Create user in Supabase Auth
+        auth_response = supabase.auth.sign_up({
+            "email": register_data.email,
+            "password": register_data.password
+        })
+        
+        if not auth_response.user:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Failed to create user account"
+            )
+        
+        # Create user profile
+        profile_data = {
+            "full_name": register_data.full_name,
+            "username": register_data.username,
+            "phone": register_data.phone
+        }
+        
+        success = await auth_service.create_user_profile(
+            auth_response.user.id,
+            register_data.email,
+            profile_data
+        )
+        
+        if not success:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to create user profile"
+            )
+        
+        # Get user profile
+        profile = await auth_service.get_user_profile(auth_response.user.id)
+        
+        # Create tokens
+        token_data = {
+            "sub": auth_response.user.id,
+            "email": register_data.email,
+            "role": "customer"
+        }
+        
+        access_token = auth_service.create_access_token(token_data)
+        refresh_token = auth_service.create_refresh_token(token_data)
+        
+        return TokenResponse(
+            access_token=access_token,
+            refresh_token=refresh_token,
+            user={
+                "id": auth_response.user.id,
+                "email": register_data.email,
+                "profile": profile
+            }
+        )
+        
+    except Exception as e:
+        logger.error(f"Registration error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Registration failed"
+        )
+
+@api_router.post("/auth/refresh")
+async def refresh_token(refresh_token: str):
+    """Refresh access token using refresh token"""
+    if not auth_service:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Authentication service unavailable"
+        )
+    
+    new_access_token = await auth_service.refresh_access_token(refresh_token)
+    if not new_access_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid refresh token"
+        )
+    
+    return {"access_token": new_access_token, "token_type": "bearer"}
+
+@api_router.get("/auth/me")
+async def get_current_user_info(current_user: dict = Depends(get_current_user)):
+    """Get current user information"""
+    return current_user
 
 @api_router.get("/health")
 async def health_check():
@@ -274,7 +450,7 @@ async def health_check():
     }
 
 @api_router.post("/setup-database")
-async def setup_database():
+async def setup_database(current_user: dict = Depends(require_role("admin"))):
     """Setup the database schema for TaskRabbit-like app"""
     try:
         # Create profiles table
@@ -374,6 +550,7 @@ async def create_booking(booking: CreateBooking, current_user: dict = Depends(ge
 
 # Include the router in the main app
 app.include_router(api_router)
+app.include_router(payment_router)
 
 app.add_middleware(
     CORSMiddleware,

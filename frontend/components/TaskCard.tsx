@@ -1,16 +1,15 @@
-import React, { useEffect, useRef } from 'react'
+import React from 'react'
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
-  Dimensions,
-  Animated,
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { router } from 'expo-router'
 import Colors from '../constants/Colors'
-import { Spacing, BorderRadius, Typography } from '../constants/Design'
+import { Spacing, BorderRadius, Typography, Shadows } from '../constants/Design'
+import AnimatedCard from './AnimatedCard'
 
 interface TaskCardProps {
   task: any
@@ -22,6 +21,7 @@ interface TaskCardProps {
   onDeleteTask?: () => void
   hasApplied?: boolean
   onStartChat?: () => void
+  index?: number
 }
 
 export default function TaskCard({
@@ -34,29 +34,9 @@ export default function TaskCard({
   onDeleteTask,
   hasApplied = false,
   onStartChat,
+  index = 0,
 }: TaskCardProps) {
-  const pulseAnim = useRef(new Animated.Value(1)).current
-
-  useEffect(() => {
-    if (task.urgency === 'urgent') {
-      const pulse = Animated.loop(
-        Animated.sequence([
-          Animated.timing(pulseAnim, {
-            toValue: 1.1,
-            duration: 1000,
-            useNativeDriver: true,
-          }),
-          Animated.timing(pulseAnim, {
-            toValue: 1,
-            duration: 1000,
-            useNativeDriver: true,
-          }),
-        ])
-      )
-      pulse.start()
-      return () => pulse.stop()
-    }
-  }, [task.urgency, pulseAnim])
+  // Removed urgency-based pulse animation
   const formatDate = (dateString: string) => {
     const date = new Date(dateString)
     return date.toLocaleDateString('en-US', {
@@ -66,105 +46,33 @@ export default function TaskCard({
     })
   }
 
-  const getUrgencyColor = (urgency: string) => {
-    switch (urgency) {
-      case 'urgent':
-        return Colors.error[500]
-      case 'within_week':
-        return Colors.warning[500]
-      case 'flexible':
-        return Colors.primary[500]
-      default:
-        return Colors.neutral[400]
-    }
-  }
-
-  const getUrgencyBackgroundColor = (urgency: string) => {
-    switch (urgency) {
-      case 'urgent':
-        return Colors.error[50]
-      case 'within_week':
-        return Colors.warning[50]
-      case 'flexible':
-        return Colors.primary[50]
-      default:
-        return Colors.neutral[50]
-    }
-  }
-
-  const getUrgencyIcon = (urgency: string) => {
-    switch (urgency) {
-      case 'urgent':
-        return 'flash'
-      case 'within_week':
-        return 'time'
-      case 'flexible':
-        return 'calendar'
-      default:
-        return 'calendar-outline'
-    }
-  }
-
-  const getUrgencyLabel = (urgency: string) => {
-    switch (urgency) {
-      case 'urgent':
-        return 'Urgent'
-      case 'within_week':
-        return 'This Week'
-      case 'flexible':
-        return 'Flexible'
-      default:
-        return urgency
-    }
-  }
+  // Removed urgency-related helper functions
 
   return (
-    <TouchableOpacity
-      style={styles.card}
+    <AnimatedCard
+      delay={index * 100}
       onPress={() => router.push(`/task/${task.id}`)}
-      activeOpacity={0.7}
+      style={styles.card}
     >
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.titleContainer}>
           <Text style={styles.title} numberOfLines={2}>
-            {task.title}
+            {task.title || 'Untitled Task'}
           </Text>
-          <View style={[styles.urgencyContainer, { backgroundColor: getUrgencyBackgroundColor(task.urgency) }]}>
-            <Animated.View style={[
-              styles.urgencyBadge,
-              { 
-                backgroundColor: getUrgencyColor(task.urgency),
-                borderWidth: 1,
-                borderColor: getUrgencyColor(task.urgency) === Colors.error[500] ? Colors.error[600] : 
-                            getUrgencyColor(task.urgency) === Colors.warning[500] ? Colors.warning[600] :
-                            getUrgencyColor(task.urgency) === Colors.primary[500] ? Colors.primary[600] : Colors.neutral[500],
-                transform: [{ scale: pulseAnim }]
-              }
-            ]}>
-            <Ionicons 
-              name={getUrgencyIcon(task.urgency) as any} 
-              size={12} 
-              color={Colors.text.inverse} 
-            />
-            <Text style={styles.urgencyText}>
-              {getUrgencyLabel(task.urgency)}
-            </Text>
-          </Animated.View>
-          </View>
         </View>
         
         <View style={styles.priceContainer}>
           <Text style={styles.priceLabel}>Budget</Text>
           <Text style={styles.price}>
-            ${task.budget}
+            ${task.budget || 0}
           </Text>
         </View>
       </View>
 
       {/* Description */}
       <Text style={styles.description} numberOfLines={3}>
-        {task.description}
+        {task.description || 'No description provided'}
       </Text>
 
       {/* Task Details */}
@@ -172,21 +80,21 @@ export default function TaskCard({
         <View style={styles.detailItem}>
           <Ionicons name="location" size={16} color={Colors.text.secondary} />
           <Text style={styles.detailText}>
-            {task.city}, {task.state}
+            {task.city || 'Unknown'}, {task.state || 'Unknown'}
           </Text>
         </View>
         
         <View style={styles.detailItem}>
           <Ionicons name="time" size={16} color={Colors.text.secondary} />
           <Text style={styles.detailText}>
-            Posted {formatDate(task.created_at)}
+            Posted {task.created_at ? formatDate(task.created_at) : 'Unknown date'}
           </Text>
         </View>
         
         <View style={styles.detailItem}>
           <Ionicons name="construct" size={16} color={Colors.text.secondary} />
           <Text style={styles.detailText}>
-            {task.task_size} • {task.category}
+            {task.task_categories?.name || task.category || 'General'}
           </Text>
         </View>
       </View>
@@ -240,19 +148,13 @@ export default function TaskCard({
                 </TouchableOpacity>
               ) : (
                 // Show chat button for assigned tasks
-                <View style={styles.assignedTaskContainer}>
-                  <View style={styles.assignedStatus}>
-                    <Ionicons name="checkmark-circle" size={14} color={Colors.success[500]} />
-                    <Text style={styles.assignedStatusText}>Task Assigned</Text>
-                  </View>
-                  <TouchableOpacity 
-                    style={[styles.actionButton, styles.chatButton]} 
-                    onPress={onStartChat}
-                  >
-                    <Ionicons name="chatbubble" size={16} color={Colors.primary[500]} />
-                    <Text style={styles.chatButtonText}>Message Tasker</Text>
-                  </TouchableOpacity>
-                </View>
+                <TouchableOpacity 
+                  style={[styles.actionButton, styles.chatButton]} 
+                  onPress={onStartChat}
+                >
+                  <Ionicons name="chatbubble" size={16} color={Colors.primary[500]} />
+                  <Text style={styles.chatButtonText}>Message Tasker</Text>
+                </TouchableOpacity>
               )}
             </>
           ) : hasApplied ? (
@@ -279,7 +181,7 @@ export default function TaskCard({
           )}
         </View>
       )}
-    </TouchableOpacity>
+    </AnimatedCard>
   )
 }
 
@@ -291,14 +193,7 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.md,
     borderWidth: 1,
     borderColor: Colors.neutral[200],
-    shadowColor: Colors.shadow.medium,
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 3,
+    ...Shadows.md,
   },
   header: {
     flexDirection: 'row',
@@ -319,40 +214,7 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.sm,
     lineHeight: 22,
   },
-  urgencyContainer: {
-    padding: Spacing.xs,
-    borderRadius: BorderRadius.sm,
-    alignSelf: 'flex-start',
-    marginTop: Spacing.xs,
-  },
-  urgencyBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'flex-start',
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: Spacing.xs,
-    borderRadius: BorderRadius.sm,
-    gap: Spacing.xs,
-    shadowColor: Colors.shadow.medium,
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
-    shadowOpacity: 0.2,
-    shadowRadius: 2,
-    elevation: 2,
-    minWidth: 80,
-    justifyContent: 'center',
-  },
-  urgencyText: {
-    fontSize: Typography.fontSize.xs,
-    fontWeight: Typography.fontWeight.medium,
-    color: Colors.text.inverse,
-    textTransform: 'capitalize',
-    textShadowColor: 'rgba(0, 0, 0, 0.3)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 1,
-  },
+  // Removed urgency-related styles
   priceContainer: {
     alignItems: 'flex-end',
   },
@@ -498,19 +360,5 @@ const styles = StyleSheet.create({
     fontSize: Typography.fontSize.sm,
     fontWeight: Typography.fontWeight.medium,
   },
-  assignedTaskContainer: {
-    gap: Spacing.xs,
-  },
-  assignedStatus: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: Spacing.xs,
-    paddingVertical: Spacing.xs,
-  },
-  assignedStatusText: {
-    fontSize: Typography.fontSize.xs,
-    color: Colors.success[600],
-    fontWeight: Typography.fontWeight.medium,
-  },
+  // Removed status-related styles
 })

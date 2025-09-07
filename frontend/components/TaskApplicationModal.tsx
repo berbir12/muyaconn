@@ -12,8 +12,8 @@ import {
   Platform,
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
-import DateTimePicker from '@react-native-community/datetimepicker'
 import { useTaskApplications } from '../hooks/useTasks'
+import DatePicker from './ui/DatePicker'
 import Colors from '../constants/Colors'
 import { Spacing, BorderRadius, Typography } from '../constants/Design'
 import TaskerApplicationModal from './TaskerApplicationModal'
@@ -42,7 +42,7 @@ export default function TaskApplicationModal({
   const [availabilityDate, setAvailabilityDate] = useState(new Date())
   const [message, setMessage] = useState('')
   const [loading, setLoading] = useState(false)
-  const [showDatePicker, setShowDatePicker] = useState(false)
+
   const [showTaskerApplication, setShowTaskerApplication] = useState(false)
 
   // No need to check application status since we removed that logic
@@ -133,21 +133,7 @@ export default function TaskApplicationModal({
     }
   }
 
-  const onDateChange = (event: any, selectedDate?: Date) => {
-    setShowDatePicker(false)
-    if (selectedDate) {
-      setAvailabilityDate(selectedDate)
-    }
-  }
 
-  const formatDate = (date: Date) => {
-    return date.toLocaleDateString('en-US', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    })
-  }
 
   return (
     <Modal
@@ -218,15 +204,13 @@ export default function TaskApplicationModal({
             </View>
 
             <View style={styles.field}>
-              <Text style={styles.fieldLabel}>Available Date</Text>
-              <TouchableOpacity
-                style={styles.dateButton}
-                onPress={() => setShowDatePicker(true)}
-              >
-                <Ionicons name="calendar" size={20} color={Colors.text.secondary} />
-                <Text style={styles.dateButtonText}>{formatDate(availabilityDate)}</Text>
-                <Ionicons name="chevron-down" size={16} color={Colors.text.secondary} />
-              </TouchableOpacity>
+              <DatePicker
+                value={availabilityDate}
+                onChange={setAvailabilityDate}
+                label="Available Date"
+                placeholder="Select date"
+                minimumDate={new Date()}
+              />
             </View>
 
             <View style={styles.field}>
@@ -279,16 +263,7 @@ export default function TaskApplicationModal({
           </TouchableOpacity>
         </ScrollView>
 
-        {/* Date Picker */}
-        {showDatePicker && (
-          <DateTimePicker
-            value={availabilityDate}
-            mode="date"
-            display="default"
-            onChange={onDateChange}
-            minimumDate={new Date()}
-          />
-        )}
+
 
         {/* Tasker Application Modal */}
         <TaskerApplicationModal
@@ -396,22 +371,7 @@ const styles = StyleSheet.create({
     height: 100,
     paddingTop: Spacing.sm,
   },
-  dateButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-    borderWidth: 1,
-    borderColor: Colors.neutral[300],
-    borderRadius: BorderRadius.md,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
-    backgroundColor: Colors.background.primary,
-  },
-  dateButtonText: {
-    flex: 1,
-    fontSize: Typography.fontSize.md,
-    color: Colors.text.primary,
-  },
+
   submitButton: {
     backgroundColor: Colors.primary[500],
     paddingVertical: Spacing.md,

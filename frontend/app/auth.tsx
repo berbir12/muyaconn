@@ -15,6 +15,7 @@ import { LinearGradient } from 'expo-linear-gradient'
 import { Ionicons } from '@expo/vector-icons'
 import { router } from 'expo-router'
 import { useAuth } from '../contexts/AuthContext'
+import { ErrorService } from '../services/ErrorService'
 import Colors from '../constants/Colors'
 import { Spacing, BorderRadius, Typography } from '../constants/Design'
 
@@ -76,66 +77,13 @@ export default function Auth() {
         // Navigation will be handled by the auth context
       }
     } catch (error: any) {
-      console.error('Auth error:', error)
-      
-      // Handle specific error cases for better user experience
-      let errorMessage = error.message || 'An error occurred'
-      let errorTitle = isSignUp ? 'Sign Up Error' : 'Sign In Error'
-
-      if (isSignUp) {
-        // Handle specific signup error cases
-        if (error.message?.includes('already registered') || 
-            error.message?.includes('already exists') ||
-            error.message?.includes('duplicate') ||
-            error.code === '23505' || // PostgreSQL unique constraint violation
-            error.code === 'PGRST116') { // Supabase specific error for existing user
-          errorTitle = 'Email Already Registered'
-          errorMessage = 'An account with this email already exists. Please use a different email or try signing in instead.'
-        } else if (error.message?.includes('invalid email') || error.code === 'invalid_email') {
-          errorTitle = 'Invalid Email'
-          errorMessage = 'Please enter a valid email address.'
-        } else if (error.message?.includes('weak password') || error.code === 'weak_password') {
-          errorTitle = 'Weak Password'
-          errorMessage = 'Please choose a stronger password (at least 6 characters).'
-        } else if (error.message?.includes('network') || 
-                   error.message?.includes('connection') ||
-                   error.message?.includes('fetch') ||
-                   error.code === 'NETWORK_ERROR') {
-          errorTitle = 'Connection Error'
-          errorMessage = 'Please check your internet connection and try again.'
-        } else if (error.code === 'USER_DELETED') {
-          errorTitle = 'Account Deleted'
-          errorMessage = 'This account has been deleted. Please contact support if you believe this is an error.'
-        } else if (error.code === 'TOO_MANY_REQUESTS') {
-          errorTitle = 'Too Many Attempts'
-          errorMessage = 'Too many signup attempts. Please wait a few minutes before trying again.'
-        }
-      } else {
-        // Handle specific signin error cases
-        if (error.message?.includes('Invalid login credentials')) {
-          errorTitle = 'Invalid Credentials'
-          errorMessage = 'The email or password you entered is incorrect. Please try again.'
-        } else if (error.message?.includes('Email not confirmed')) {
-          errorTitle = 'Email Not Verified'
-          errorMessage = 'Please check your email and click the verification link before signing in.'
-        } else if (error.message?.includes('network') || 
-                   error.message?.includes('connection') ||
-                   error.message?.includes('fetch') ||
-                   error.code === 'NETWORK_ERROR') {
-          errorTitle = 'Connection Error'
-          errorMessage = 'Please check your internet connection and try again.'
-        } else if (error.code === 'USER_NOT_FOUND') {
-          errorTitle = 'User Not Found'
-          errorMessage = 'No account found with this email. Please check your email or sign up.'
-        } else if (error.code === 'USER_DELETED') {
-          errorTitle = 'Account Deleted'
-          errorMessage = 'This account has been deleted. Please contact support if you believe this is an error.'
-        } else if (error.code === 'TOO_MANY_REQUESTS') {
-          errorTitle = 'Too Many Attempts'
-          errorMessage = 'Too many signin attempts. Please wait a few minutes before trying again.'
-        }
-      }
-      Alert.alert(errorTitle, errorMessage)
+      // Use ErrorService for consistent error handling
+      ErrorService.handleError(error, {
+        context: isSignUp ? 'UserRegistration' : 'UserAuthentication',
+        showAlert: true,
+        logError: true,
+        fallbackMessage: isSignUp ? 'Registration failed' : 'Authentication failed'
+      })
     } finally {
       setLoading(false)
     }

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { RatingService, Review, ReviewStats, CreateReviewData } from '../services/RatingService'
 import { useAuth } from '../contexts/AuthContext'
 
@@ -115,22 +115,22 @@ export const useUserReviews = (userId: string, limit: number = 20) => {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [hasMore, setHasMore] = useState(true)
-  const [offset, setOffset] = useState(0)
+  const offsetRef = useRef(0)
 
   const fetchReviews = useCallback(async (reset: boolean = false) => {
     try {
       setLoading(true)
       setError(null)
       
-      const currentOffset = reset ? 0 : offset
+      const currentOffset = reset ? 0 : offsetRef.current
       const newReviews = await RatingService.getUserReviews(userId, limit, currentOffset)
       
       if (reset) {
         setReviews(newReviews)
-        setOffset(limit)
+        offsetRef.current = limit
       } else {
         setReviews(prev => [...prev, ...newReviews])
-        setOffset(prev => prev + limit)
+        offsetRef.current += limit
       }
       
       setHasMore(newReviews.length === limit)
@@ -139,10 +139,10 @@ export const useUserReviews = (userId: string, limit: number = 20) => {
     } finally {
       setLoading(false)
     }
-  }, [userId, limit, offset])
+  }, [userId, limit])
 
   const refreshReviews = useCallback(() => {
-    setOffset(0)
+    offsetRef.current = 0
     fetchReviews(true)
   }, [fetchReviews])
 

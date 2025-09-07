@@ -17,6 +17,7 @@ import * as ImagePicker from 'expo-image-picker'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { ImageUploadService } from '../services/ImageUploadService'
+import { TransactionService } from '../services/TransactionService'
 import Colors from '../constants/Colors'
 import { Spacing, BorderRadius, Typography } from '../constants/Design'
 
@@ -398,44 +399,41 @@ export default function TaskerApplicationModal({
 
   const submitNewApplication = async () => {
     try {
+      const applicationData = {
+        personal_info: {
+          full_name: fullName,
+          phone: phone,
+          date_of_birth: dateOfBirth,
+          nationality: nationality,
+          id_number: idNumber,
+        },
+        professional_info: {
+          experience: experience,
+          skills: skills,
+          hourly_rate: parseFloat(hourlyRate) || 0,
+          availability: availability,
+          preferred_categories: preferredCategories ? preferredCategories.split(',').map(cat => cat.trim()) : [],
+        },
+        verification: {
+          has_valid_id: hasValidId,
+          has_background_check: hasBackgroundCheck,
+          has_insurance: hasInsurance,
+          has_references: hasReferences,
+          national_id_front: nationalIdFront,
+          national_id_back: nationalIdBack,
+          skill_certifications: skillCertifications,
+        },
+      }
 
-      // Simplified insert for testing
-      const { data, error: applicationError } = await supabase
-        .from('tasker_applications')
-        .insert({
-          user_id: profile?.id,
-          status: 'pending',
-          personal_info: {
-            full_name: fullName,
-            phone: phone,
-            date_of_birth: dateOfBirth,
-            nationality: nationality,
-            id_number: idNumber,
-          },
-          professional_info: {
-            experience: experience,
-            skills: skills,
-            hourly_rate: parseFloat(hourlyRate) || 0,
-            availability: availability,
-            preferred_categories: preferredCategories ? preferredCategories.split(',').map(cat => cat.trim()) : [],
-          },
-          verification: {
-            has_valid_id: hasValidId,
-            has_background_check: hasBackgroundCheck,
-            has_insurance: hasInsurance,
-            has_references: hasReferences,
-            national_id_front: nationalIdFront,
-            national_id_back: nationalIdBack,
-            skill_certifications: skillCertifications,
-          },
-        })
-        .select()
+      // Use transaction service for atomic operation
+      const result = await TransactionService.createTaskerApplication(
+        profile?.id!,
+        applicationData
+      )
 
-      if (applicationError) {
-        console.error('Supabase error details:', applicationError)
-        
+      if (!result.success) {
         // Handle duplicate key error specifically
-        if (applicationError.code === '23505') {
+        if (result.error?.includes('23505') || result.error?.includes('duplicate')) {
           Alert.alert(
             'Application Already Exists',
             'You already have a tasker application. Please check your application status in your profile.',
@@ -444,10 +442,10 @@ export default function TaskerApplicationModal({
           return
         }
         
-        throw applicationError
+        throw new Error(result.error || 'Failed to submit application')
       }
 
-      console.log('Application submitted successfully:', data)
+      console.log('Application submitted successfully:', result.data)
 
       // Send notification to admins about new tasker application
       try {

@@ -1,7 +1,9 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { ChatCleanupService } from '../services/ChatCleanupService'
+import { TransactionService } from '../services/TransactionService'
+import { ErrorService } from '../services/ErrorService'
 
 // Helper function to convert DD/MM/YYYY to YYYY-MM-DD format
 const formatDateForDatabase = (dateString: string): string => {
@@ -121,87 +123,42 @@ export const useTasks = () => {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const fetchTasks = async () => {
+  const fetchTasks = useCallback(async () => {
     try {
       setLoading(true)
       setError(null)
 
+      if (!profile?.id) {
+        setTasks([])
+        return
+      }
 
-
+      // Build optimized query with single database call
       let query = supabase
         .from('tasks')
         .select(`
           *,
           task_categories (name, slug, icon, color),
           customer_profile:profiles!customer_id (full_name, username, avatar_url, rating_average, rating_count),
-          tasker_profile:profiles!tasker_id (full_name, username, avatar_url, rating_average, rating_count)
+          tasker_profile:profiles!tasker_id (full_name, username, avatar_url, rating_average, rating_count),
+          task_applications (id)
         `)
 
-      // Filter based on user role
-      if (profile?.role === 'customer' && profile?.id) {
-        // Customers see their own tasks (for management) plus all open tasks (to see what's available)
-        // Use a simpler approach: first get customer's own tasks, then get open tasks from others
-        const { data: ownTasks, error: ownError } = await supabase
-          .from('tasks')
-          .select(`
-            *,
-            task_categories (name, slug, icon, color),
-            customer_profile:profiles!customer_id (full_name, username, avatar_url, rating_average, rating_count),
-            tasker_profile:profiles!tasker_id (full_name, username, avatar_url, rating_average, rating_count)
-          `)
-          .eq('customer_id', profile.id)
-          .order('created_at', { ascending: false })
-
-        if (ownError) throw ownError
-
-        const { data: openTasks, error: openError } = await supabase
-          .from('tasks')
-          .select(`
-            *,
-            task_categories (name, slug, icon, color),
-            customer_profile:profiles!customer_id (full_name, username, avatar_url, rating_average, rating_count),
-            tasker_profile:profiles!tasker_id (full_name, username, avatar_url, rating_average, rating_count)
-          `)
-          .eq('status', 'open')
-          .neq('customer_id', profile.id)
-          .order('created_at', { ascending: false })
-
-        if (openError) throw openError
-
-        // Combine the results
-        const combinedTasks = [...(ownTasks || []), ...(openTasks || [])]
-        const sortedTasks = combinedTasks.sort((a, b) => 
-          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-        )
-
-        // Get application counts for combined tasks
-        if (sortedTasks.length > 0) {
-          const taskIds = sortedTasks.map(task => task.id)
-          const { data: applicationCounts } = await supabase
-            .from('task_applications')
-            .select('task_id')
-            .in('task_id', taskIds)
-
-          const countsMap = applicationCounts?.reduce((acc, app) => {
-            acc[app.task_id] = (acc[app.task_id] || 0) + 1
-            return acc
-          }, {} as Record<string, number>) || {}
-
-          const tasksWithCounts = sortedTasks.map(task => ({
-            ...task,
-            applications_count: countsMap[task.id] || 0
-          }))
-
-          setTasks(tasksWithCounts)
-        } else {
-          setTasks([])
-        }
-        return // Exit early for customers
-      } else if ((profile?.role === 'tasker' || profile?.role === 'both') && profile?.id) {
-        // Taskers see ALL open tasks (to apply to) plus tasks assigned to them
+      // Apply role-based filtering
+      if (profile.role === 'customer') {
+        // Customers see their own tasks + open tasks from others
+        query = query.or(`customer_id.eq.${profile.id},and(status.eq.open,customer_id.neq.${profile.id})`)
+      } else if (profile.role === 'tasker') {
+        // Taskers see open tasks + tasks assigned to them
         query = query.or(`status.eq.open,tasker_id.eq.${profile.id}`)
+      } else if (profile.role === 'both') {
+        // Users with both roles see:
+        // 1. Open tasks (to apply to)
+        // 2. Tasks assigned to them (as tasker)
+        // 3. Tasks they created (as customer) - regardless of status until completed
+        query = query.or(`status.eq.open,tasker_id.eq.${profile.id},and(customer_id.eq.${profile.id},status.neq.completed)`)
       } else {
-        // Unauthenticated users or unknown roles see all open tasks
+        // Default: show only open tasks
         query = query.eq('status', 'open')
       }
 
@@ -210,40 +167,15 @@ export const useTasks = () => {
       if (error) throw error
 
       if (data && data.length > 0) {
-        // Check if the data is valid (has proper titles)
-        const hasValidData = data.every(task => 
-          task.title && 
-          typeof task.title === 'string' && 
-          task.title.length > 0 && 
-          !task.title.includes('-') // UUIDs typically contain hyphens
-        )
-        
-        if (!hasValidData) {
-          throw new Error('Invalid task data structure')
-        }
-      }
-
-      // Get application counts for each task
-      if (data && data.length > 0) {
-        const taskIds = data.map(task => task.id)
-        const { data: applicationCounts } = await supabase
-          .from('task_applications')
-          .select('task_id')
-          .in('task_id', taskIds)
-
-        // Count applications per task
-        const countsMap = applicationCounts?.reduce((acc, app) => {
-          acc[app.task_id] = (acc[app.task_id] || 0) + 1
-          return acc
-        }, {} as Record<string, number>) || {}
-
-        // Add counts to tasks
-        const tasksWithCounts = data.map(task => ({
+        // Process data and add application counts
+        const processedTasks = data.map(task => ({
           ...task,
-          applications_count: countsMap[task.id] || 0
+          applications_count: task.task_applications?.length || 0,
+          // Remove the task_applications array as it's not needed in the UI
+          task_applications: undefined
         }))
 
-        setTasks(tasksWithCounts)
+        setTasks(processedTasks)
       } else {
         setTasks([])
       }
@@ -293,7 +225,7 @@ export const useTasks = () => {
     } finally {
       setLoading(false)
     }
-  }
+  }, [profile])
 
   const createTask = async (taskData: {
     title: string
@@ -352,52 +284,77 @@ export const useTasks = () => {
         .single()
 
       if (error) {
-        console.error('=== Supabase insert error ===')
-        console.error('Error details:', error)
-        console.error('Error message:', error.message)
-        console.error('Error details:', error.details)
-        console.error('Error hint:', error.hint)
-        console.error('Error code:', error.code)
         throw error
       }
-
 
       await fetchTasks() // Refresh tasks list
       
       return data
     } catch (err: any) {
-      console.error('=== Error in createTask function ===')
-      console.error('Error type:', typeof err)
-      console.error('Error details:', err)
-      console.error('Error message:', err.message)
-      if (err.stack) console.error('Error stack:', err.stack)
+      // Use ErrorService for consistent error handling
+      ErrorService.handleError(err, {
+        context: 'TaskCreation',
+        showAlert: true,
+        logError: true,
+        fallbackMessage: 'Failed to create task'
+      })
       throw err
     }
   }
 
   const updateTaskStatus = async (taskId: string, status: Task['status']) => {
     try {
-      const { error } = await supabase
-        .from('tasks')
-        .update({ 
-          status,
-          updated_at: new Date().toISOString(),
-          ...(status === 'completed' ? { completed_at: new Date().toISOString() } : {})
-        })
-        .eq('id', taskId)
-
-      if (error) throw error
-
-      // Delete associated chats when task is completed or cancelled
+      // Use transaction service for task completion
       if (status === 'completed') {
+        const result = await TransactionService.completeTask(taskId)
+        if (!result.success) {
+          throw new Error(result.error || 'Failed to complete task')
+        }
+        
+        // Delete associated chats after successful completion
         await ChatCleanupService.deleteChatsForCompletedTask(taskId)
       } else if (status === 'cancelled') {
+        const result = await TransactionService.cancelTask(taskId)
+        if (!result.success) {
+          throw new Error(result.error || 'Failed to cancel task')
+        }
+        
+        // Delete associated chats after successful cancellation
         await ChatCleanupService.deleteChatsForCancelledTask(taskId)
+      } else {
+        // For other status updates, use direct update
+        const { error } = await supabase
+          .from('tasks')
+          .update({ 
+            status,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', taskId)
+
+        if (error) throw error
       }
 
       await fetchTasks() // Refresh tasks list
+      
+      // If this was a task completion, refresh the user's profile to update stats
+      if (status === 'completed') {
+        // Import and call profile refresh if available
+        try {
+          const { refreshProfile } = await import('../contexts/AuthContext')
+          if (refreshProfile) {
+            await refreshProfile()
+          }
+        } catch (error) {
+          console.warn('Could not refresh profile after task completion:', error)
+        }
+      }
     } catch (err: any) {
-      console.error('Error updating task status:', err)
+      ErrorService.handleError(err, {
+        context: 'TaskStatusUpdate',
+        showAlert: true,
+        logError: true,
+        fallbackMessage: 'Failed to update task status'
+      })
       throw err
     }
   }
@@ -422,11 +379,154 @@ export const useTasks = () => {
     }
   }
 
+  const editTask = async (taskId: string, taskData: Partial<Task>) => {
+    try {
+      if (!profile) {
+        throw new Error('User not authenticated')
+      }
+
+      // Only allow editing if user is the task owner
+      const { data: existingTask, error: fetchError } = await supabase
+        .from('tasks')
+        .select('customer_id')
+        .eq('id', taskId)
+        .single()
+
+      if (fetchError) throw fetchError
+
+      if (existingTask.customer_id !== profile.id) {
+        throw new Error('You can only edit your own tasks')
+      }
+
+      // Check if task can be edited (not in progress or completed)
+      if (taskData.status && ['in_progress', 'completed'].includes(taskData.status)) {
+        throw new Error('Cannot edit task that is in progress or completed')
+      }
+
+      const { data, error } = await supabase
+        .from('tasks')
+        .update({
+          ...taskData,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', taskId)
+        .select()
+        .single()
+
+      if (error) throw error
+
+      await fetchTasks() // Refresh tasks list
+      return data
+    } catch (err: any) {
+      console.error('Error editing task:', err)
+      throw err
+    }
+  }
+
+  const deleteTask = async (taskId: string) => {
+    try {
+      console.log('=== DELETE TASK START ===')
+      console.log('Deleting task ID:', taskId)
+      
+      if (!profile) {
+        throw new Error('User not authenticated')
+      }
+
+      // Simple delete - just delete the task directly
+      console.log('Attempting to delete task...')
+      const { error: deleteError } = await supabase
+        .from('tasks')
+        .delete()
+        .eq('id', taskId)
+
+      console.log('Delete error:', deleteError)
+
+      if (deleteError) {
+        console.error('Delete failed:', deleteError)
+        throw new Error(`Failed to delete task: ${deleteError.message}`)
+      }
+
+      console.log('Task deleted successfully!')
+      console.log('=== DELETE TASK END ===')
+      
+      // Refresh the tasks list
+      await fetchTasks()
+      
+      return true
+    } catch (err: any) {
+      console.error('=== DELETE TASK ERROR ===')
+      console.error('Error:', err)
+      console.error('Message:', err.message)
+      console.error('=== END DELETE TASK ERROR ===')
+      throw err
+    }
+  }
+
+  // Initial fetch with stable dependencies
   useEffect(() => {
-    if (profile) {
+    if (profile?.id) {
       fetchTasks()
     }
-  }, [profile])
+  }, [profile?.id]) // Remove fetchTasks from dependencies to prevent infinite loops
+
+  // Test function to check database permissions
+  const testDeletePermission = async (taskId: string) => {
+    try {
+      console.log('=== TESTING DELETE PERMISSION ===')
+      
+      // Test 1: Can we read the task?
+      console.log('Test 1: Reading task...')
+      const { data: readData, error: readError } = await supabase
+        .from('tasks')
+        .select('*')
+        .eq('id', taskId)
+        .single()
+      
+      console.log('Read result:', { data: readData, error: readError })
+      
+      if (readError) {
+        console.error('Cannot read task:', readError)
+        return { success: false, error: 'Cannot read task', details: readError }
+      }
+      
+      // Test 2: Can we update the task?
+      console.log('Test 2: Updating task...')
+      const { data: updateData, error: updateError } = await supabase
+        .from('tasks')
+        .update({ updated_at: new Date().toISOString() })
+        .eq('id', taskId)
+        .select()
+      
+      console.log('Update result:', { data: updateData, error: updateError })
+      
+      if (updateError) {
+        console.error('Cannot update task:', updateError)
+        return { success: false, error: 'Cannot update task', details: updateError }
+      }
+      
+      // Test 3: Can we delete the task?
+      console.log('Test 3: Deleting task...')
+      const { data: deleteData, error: deleteError } = await supabase
+        .from('tasks')
+        .delete()
+        .eq('id', taskId)
+        .select()
+      
+      console.log('Delete result:', { data: deleteData, error: deleteError })
+      
+      if (deleteError) {
+        console.error('Cannot delete task:', deleteError)
+        return { success: false, error: 'Cannot delete task', details: deleteError }
+      }
+      
+      console.log('All tests passed!')
+      return { success: true, message: 'All permissions working' }
+      
+    } catch (err: any) {
+      console.error('Test failed:', err)
+      return { success: false, error: 'Test failed', details: err }
+    }
+  }
 
   return {
     tasks,
@@ -436,6 +536,9 @@ export const useTasks = () => {
     createTask,
     updateTaskStatus,
     assignTasker,
+    editTask,
+    deleteTask,
+    testDeletePermission,
   }
 }
 
@@ -657,11 +760,8 @@ export const useTaskApplications = (taskId?: string) => {
     }
   }
 
-  useEffect(() => {
-    if (profile && (taskId || profile.role === 'tasker')) {
-      fetchApplications()
-    }
-  }, [profile, taskId])
+  // Initial fetch - removed useEffect to prevent infinite loops
+  // fetchApplications will be called manually when needed
 
 
 

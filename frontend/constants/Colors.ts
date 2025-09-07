@@ -126,6 +126,8 @@ export const Colors = {
   
   // Border Colors
   border: {
+    primary: '#D1D5DB',
+    secondary: '#E8EAED',
     light: '#E8EAED',
     medium: '#D1D5DB',
     dark: '#9CA3AF',
@@ -136,6 +138,14 @@ export const Colors = {
     light: 'rgba(0, 0, 0, 0.04)',
     medium: 'rgba(0, 0, 0, 0.1)',
     heavy: 'rgba(0, 0, 0, 0.15)',
+  },
+
+  // Accent Colors for UI elements
+  accent: {
+    primary: '#0E8AFF',
+    error: '#EF4444',
+    success: '#22C55E',
+    warning: '#F59E0B',
   }
 }
 

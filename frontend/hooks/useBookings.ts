@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { useNotifications } from './useNotifications'
 import { ChatCleanupService } from '../services/ChatCleanupService'
+import { TransactionService } from '../services/TransactionService'
 
 export interface TaskBooking {
   id: string
@@ -18,7 +19,7 @@ export interface TaskBooking {
   task_date?: string
   task_time?: string
   flexible_date: boolean
-  estimated_hours?: number
+  estimated_duration_hours?: number
   budget: number
   final_price?: number
   task_size: 'small' | 'medium' | 'large'
@@ -66,7 +67,7 @@ export function useBookings() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const fetchBookings = async () => {
+  const fetchBookings = useCallback(async () => {
     if (!profile) return
 
     try {
@@ -130,7 +131,7 @@ export function useBookings() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [profile])
 
   const updateBookingStatus = async (bookingId: string, status: TaskBooking['status']) => {
     try {
@@ -204,17 +205,11 @@ export function useBookings() {
 
   const completeBooking = async (bookingId: string) => {
     try {
-      // Update the task status directly since we're working with tasks table
-      const { error: taskError } = await supabase
-        .from('tasks')
-        .update({ 
-          status: 'completed',
-          completed_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', bookingId)
-
-      if (taskError) throw taskError
+      // Use TransactionService to properly complete the task with profile updates
+      const result = await TransactionService.completeTask(bookingId)
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to complete task')
+      }
 
       // Delete associated chats when task is completed
       await ChatCleanupService.deleteChatsForCompletedTask(bookingId)
@@ -257,7 +252,7 @@ export function useBookings() {
     agreed_price: number
     booking_date: string
     start_time: string
-    estimated_hours: number
+    estimated_duration_hours?: number
     customer_notes?: string
   }) => {
     try {
@@ -272,7 +267,7 @@ export function useBookings() {
           agreed_price: bookingData.agreed_price,
           booking_date: bookingData.booking_date,
           start_time: bookingData.start_time,
-          estimated_hours: bookingData.estimated_hours,
+          estimated_duration_hours: bookingData.estimated_duration_hours,
           customer_notes: bookingData.customer_notes,
           status: 'pending'
         })
@@ -338,9 +333,12 @@ export function useBookings() {
     }
   }
 
+  // Initial fetch with stable dependencies
   useEffect(() => {
-    fetchBookings()
-  }, [profile])
+    if (profile?.id) {
+      fetchBookings()
+    }
+  }, [profile?.id]) // Remove fetchBookings from dependencies to prevent infinite loops
 
   return {
     bookings,

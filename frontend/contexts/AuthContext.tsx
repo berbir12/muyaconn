@@ -1,6 +1,7 @@
-import React, { createContext, useContext, useEffect, useState } from 'react'
+import React, { createContext, useContext, useEffect, useState, useCallback } from 'react'
 import { Session, User } from '@supabase/supabase-js'
 import { supabase, UserProfile } from '../lib/supabase'
+import { AuthService, UserInfo } from '../services/AuthService'
 
 interface AuthContextType {
   user: User | null
@@ -22,11 +23,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    initializeAuth()
-  }, [])
-
-  const initializeAuth = async () => {
+  const initializeAuth = useCallback(async () => {
     try {
 
       // Get session from Supabase
@@ -69,7 +66,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.error('Auth initialization error:', error)
       setLoading(false)
     }
-  }
+  }, [])
+
+  useEffect(() => {
+    initializeAuth()
+  }, [initializeAuth])
 
 
 
@@ -104,45 +105,62 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signIn = async (email: string, password: string) => {
     setLoading(true)
     try {
-      const { error } = await supabase.auth.signInWithPassword({ email, password })
+      const response = await AuthService.login(email, password)
       
+      // Update state with new user info
+      setUser({
+        id: response.user.id,
+        email: response.user.email,
+      } as User)
+      
+      setProfile(response.user.profile)
+      
+      // Also sign in with Supabase for compatibility
+      const { error } = await supabase.auth.signInWithPassword({ email, password })
       if (error) {
-        throw error
+        console.warn('Supabase auth error:', error)
       }
     } catch (error: any) {
       setLoading(false)
       throw error
+    } finally {
+      setLoading(false)
     }
   }
 
   const signUp = async (email: string, password: string, profileData: Partial<UserProfile>) => {
     setLoading(true)
     try {
-      // Always set role as 'customer' by default
-      const profileWithDefaultRole = {
-        ...profileData,
-        role: 'customer' as const,
-      }
-
-      const { data, error } = await supabase.auth.signUp({
+      const response = await AuthService.register(
+        email,
+        password,
+        profileData.full_name || '',
+        profileData.username || '',
+        profileData.phone
+      )
+      
+      // Update state with new user info
+      setUser({
+        id: response.user.id,
+        email: response.user.email,
+      } as User)
+      
+      setProfile(response.user.profile)
+      
+      // Also sign up with Supabase for compatibility
+      const { error } = await supabase.auth.signUp({
         email,
         password,
         options: {
-          data: profileWithDefaultRole,
+          data: profileData,
         },
       })
       
       if (error) {
-        throw error
+        console.warn('Supabase auth error:', error)
       }
 
-      // Check if signup was successful
-      if (data.user) {
-
-        return { success: true, user: data.user }
-      } else {
-        throw new Error('Signup failed - no user data returned')
-      }
+      return { success: true, user: response.user as any }
     } catch (error: any) {
       console.error('Signup error:', error)
       setLoading(false)
@@ -153,8 +171,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   const signOut = async () => {
+    try {
+      await AuthService.logout()
+    } catch (error) {
+      console.warn('AuthService logout error:', error)
+    }
+    
     const { error } = await supabase.auth.signOut()
     if (error) throw error
+    
+    setUser(null)
+    setSession(null)
     setProfile(null)
   }
 

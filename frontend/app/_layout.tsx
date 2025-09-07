@@ -1,11 +1,15 @@
+import React from 'react'
 import { Tabs } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
 import { AuthProvider, useAuth } from '../contexts/AuthContext'
 import { NotificationProvider } from '../contexts/NotificationContext'
+import { LanguageProvider, useLanguage } from '../contexts/LanguageContext'
+import { StorageSetupService } from '../services/StorageSetupService'
 import Colors from '../constants/Colors'
 
 function TabNavigator() {
   const { profile } = useAuth()
+  const { t } = useLanguage()
   
   // Only show Bookings tab for users with tasker role (tasker or both)
   const showBookingsTab = profile?.role === 'tasker' || profile?.role === 'both'
@@ -69,36 +73,35 @@ function TabNavigator() {
         }}
       />
       
-
       
-                  {/* Essential hidden screens only */}
-        <Tabs.Screen
-          name="index"
-          options={{
-            href: null,
-          }}
-        />
-        
-        <Tabs.Screen
-          name="active-work"
-          options={{
-            href: null,
-          }}
-        />
-        
-        <Tabs.Screen
-          name="taskers"
-          options={{
-            href: null,
-          }}
-        />
-        
-        <Tabs.Screen
-          name="task"
-          options={{
-            href: null,
-          }}
-        />
+      {/* Essential hidden screens only */}
+      <Tabs.Screen
+        name="index"
+        options={{
+          href: null,
+        }}
+      />
+      
+      <Tabs.Screen
+        name="active-work"
+        options={{
+          href: null,
+        }}
+      />
+      
+      <Tabs.Screen
+        name="taskers"
+        options={{
+          href: null,
+        }}
+      />
+      
+      <Tabs.Screen
+        name="task"
+        options={{
+          href: null,
+        }}
+      />
       
       <Tabs.Screen
         name="auth"
@@ -120,16 +123,60 @@ function TabNavigator() {
           href: null,
         }}
       />
+      
+      <Tabs.Screen
+        name="settings"
+        options={{
+          href: null,
+        }}
+      />
+      
+      <Tabs.Screen
+        name="legal"
+        options={{
+          href: null,
+        }}
+      />
+      
+      <Tabs.Screen
+        name="legal/privacy"
+        options={{
+          href: null,
+        }}
+      />
+      
+      <Tabs.Screen
+        name="legal/terms"
+        options={{
+          href: null,
+        }}
+      />
     </Tabs>
   )
 }
 
 export default function RootLayout() {
+  // Initialize storage on app startup
+  React.useEffect(() => {
+    const initializeStorage = async () => {
+      try {
+        await StorageSetupService.initializeStorage()
+        console.log('Storage initialized successfully')
+      } catch (error) {
+        console.error('Failed to initialize storage:', error)
+      }
+    }
+
+    initializeStorage()
+  }, [])
+
   return (
-      <AuthProvider>
-      <NotificationProvider>
-        <TabNavigator />
-      </NotificationProvider>
-      </AuthProvider>
+    <AuthProvider>
+      <LanguageProvider>
+        <NotificationProvider>
+          <TabNavigator />
+        </NotificationProvider>
+      </LanguageProvider>
+    </AuthProvider>
   )
 }

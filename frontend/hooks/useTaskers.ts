@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { TaskerService, Tasker, TaskerFilters, TaskerStats } from '../services/TaskerService'
 
 export const useTaskers = (filters: TaskerFilters = {}, limit: number = 20) => {
@@ -6,22 +6,32 @@ export const useTaskers = (filters: TaskerFilters = {}, limit: number = 20) => {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [hasMore, setHasMore] = useState(true)
-  const [offset, setOffset] = useState(0)
+  const offsetRef = useRef(0)
+
+  // Memoize filters to prevent unnecessary re-renders
+  const memoizedFilters = useMemo(() => filters, [
+    filters?.search,
+    filters?.skills,
+    filters?.location,
+    filters?.minRating,
+    filters?.maxHourlyRate,
+    filters?.availability
+  ])
 
   const fetchTaskers = useCallback(async (reset: boolean = false) => {
     try {
       setLoading(true)
       setError(null)
       
-      const currentOffset = reset ? 0 : offset
-      const newTaskers = await TaskerService.getTaskers(filters, limit, currentOffset)
+      const currentOffset = reset ? 0 : offsetRef.current
+      const newTaskers = await TaskerService.getTaskers(memoizedFilters, limit, currentOffset)
       
       if (reset) {
         setTaskers(newTaskers)
-        setOffset(limit)
+        offsetRef.current = limit
       } else {
         setTaskers(prev => [...prev, ...newTaskers])
-        setOffset(prev => prev + limit)
+        offsetRef.current += limit
       }
       
       setHasMore(newTaskers.length === limit)
@@ -30,10 +40,10 @@ export const useTaskers = (filters: TaskerFilters = {}, limit: number = 20) => {
     } finally {
       setLoading(false)
     }
-  }, [filters, limit, offset])
+  }, [memoizedFilters, limit])
 
   const refreshTaskers = useCallback(() => {
-    setOffset(0)
+    offsetRef.current = 0
     fetchTaskers(true)
   }, [fetchTaskers])
 
@@ -43,9 +53,10 @@ export const useTaskers = (filters: TaskerFilters = {}, limit: number = 20) => {
     }
   }, [loading, hasMore, fetchTaskers])
 
+  // Initial fetch with stable dependencies
   useEffect(() => {
     fetchTaskers(true)
-  }, [filters])
+  }, []) // Remove fetchTaskers from dependencies to prevent infinite loops
 
   return {
     taskers,
@@ -78,9 +89,8 @@ export const useTasker = (userId: string) => {
     }
   }, [userId])
 
-  useEffect(() => {
-    fetchTasker()
-  }, [fetchTasker])
+  // Initial fetch - removed useEffect to prevent infinite loops
+  // fetchTasker will be called manually when needed
 
   const updateTaskerProfile = useCallback(async (updates: Parameters<typeof TaskerService.updateTaskerProfile>[1]) => {
     if (!userId) return
@@ -148,9 +158,8 @@ export const useTaskerStats = () => {
     }
   }, [])
 
-  useEffect(() => {
-    fetchStats()
-  }, [fetchStats])
+  // Initial fetch - removed useEffect to prevent infinite loops
+  // fetchStats will be called manually when needed
 
   return {
     stats,

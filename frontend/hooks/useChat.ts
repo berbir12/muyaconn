@@ -23,6 +23,7 @@ export function useChat() {
   // Refs for real-time subscriptions
   const chatChannelRef = useRef<any>(null)
   const messageChannelRef = useRef<any>(null)
+  const currentChatRef = useRef<Chat | null>(null)
 
   // Validate if a chat can be accessed based on task status
   const validateChatAccess = useCallback(async (taskId: string | null): Promise<ChatValidationResult> => {
@@ -396,7 +397,7 @@ export function useChat() {
       setError(err.message)
       return null
     }
-  }, [profile, currentChat, fetchChats, chats, validateChatAccess])
+  }, [profile, currentChat, fetchChats, validateChatAccess])
 
   // Fetch messages for a specific chat with validation
   const fetchMessages = useCallback(async (chatId: string) => {
@@ -477,12 +478,13 @@ export function useChat() {
     }
 
     setCurrentChat(chat)
+    currentChatRef.current = chat
     await fetchMessages(chat.id)
   }, [fetchMessages, validateChatAccess])
 
   // Set up real-time subscriptions
   const setupRealtimeSubscriptions = useCallback(() => {
-    if (!profile || chats.length === 0) return
+    if (!profile) return
 
     // Clean up existing subscriptions
     if (chatChannelRef.current) {
@@ -492,7 +494,7 @@ export function useChat() {
       supabase.removeChannel(messageChannelRef.current)
     }
 
-    // Subscribe to chat updates
+    // Subscribe to chat updates - use user-based filter instead of chat IDs
     chatChannelRef.current = supabase
       .channel('chat_updates')
       .on(
@@ -501,7 +503,7 @@ export function useChat() {
           event: 'UPDATE',
           schema: 'public',
           table: 'chats',
-          filter: `id=in.(${chats.map(c => c.id).join(',')})`
+          filter: `customer_id=eq.${profile.id}`
         },
         (payload) => {
           const updatedChat = payload.new as Chat
@@ -516,7 +518,7 @@ export function useChat() {
       )
       .subscribe()
 
-    // Subscribe to new messages
+    // Subscribe to new messages - use user-based filter instead of chat IDs
     messageChannelRef.current = supabase
       .channel('chat_messages')
       .on(
@@ -525,13 +527,13 @@ export function useChat() {
           event: 'INSERT',
           schema: 'public',
           table: 'chat_messages',
-          filter: `chat_id=in.(${chats.map(c => c.id).join(',')})`
+          filter: `chat_id=in.(select id from chats where customer_id=eq.${profile.id} or tasker_id=eq.${profile.id})`
         },
         (payload) => {
           const newMessage = payload.new as ChatMessage
           
           // Add to messages if we're in the current chat
-          if (currentChat && newMessage.chat_id === currentChat.id) {
+          if (currentChatRef.current && newMessage.chat_id === currentChatRef.current.id) {
             setMessages(prev => [...prev, newMessage])
           }
 
@@ -553,7 +555,7 @@ export function useChat() {
       .subscribe()
 
     setIsConnected(true)
-  }, [profile, chats, currentChat])
+  }, [profile])
 
   // Clean up subscriptions
   const cleanupSubscriptions = useCallback(() => {
@@ -568,23 +570,17 @@ export function useChat() {
     setIsConnected(false)
   }, [])
 
-  // Set up real-time subscriptions when chats change
+  // Set up real-time subscriptions when profile changes
   useEffect(() => {
-    setupRealtimeSubscriptions()
-    return cleanupSubscriptions
-  }, [setupRealtimeSubscriptions, cleanupSubscriptions])
-
-  // Initial fetch
-  useEffect(() => {
-    fetchChats()
-  }, [fetchChats])
-
-  // Cleanup on unmount
-  useEffect(() => {
+    if (profile?.id) {
+      setupRealtimeSubscriptions()
+      fetchChats()
+    }
+    
     return () => {
       cleanupSubscriptions()
     }
-  }, [cleanupSubscriptions])
+  }, [profile?.id]) // Remove function dependencies to prevent infinite loops
 
   return {
     chats,

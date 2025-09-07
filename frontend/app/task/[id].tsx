@@ -20,6 +20,7 @@ import { Spacing, BorderRadius, Typography } from '../../constants/Design'
 import TaskApplicationCard from '../../components/TaskApplicationCard'
 import TaskerProfileModal from '../../components/TaskerProfileModal'
 import NotificationButton from '../../components/NotificationButton'
+import { TransactionService } from '../../services/TransactionService'
 
 export default function TaskDetail() {
   const { id } = useLocalSearchParams<{ id: string }>()
@@ -105,74 +106,25 @@ export default function TaskDetail() {
 
   const handleAcceptApplication = async (application: any) => {
     try {
-      // Update application status in Supabase
-      const { error: updateError } = await supabase
-        .from('task_applications')
-        .update({ status: 'accepted' })
-        .eq('id', application.id)
-
-      if (updateError) {
-        throw updateError
-      }
-
-      // Update task status to 'in_progress' to move it to bookings and prevent new applications
-      const { error: taskError } = await supabase
-        .from('tasks')
-        .update({ 
-          status: 'in_progress',
-          tasker_id: application.tasker_id
-        })
-        .eq('id', selectedTask.id)
-
-      if (taskError) {
-        throw taskError
-      }
-
-      // Create chat for the accepted task
-      try {
-        // Check if chat already exists first
-        const { data: existingChat, error: checkError } = await supabase
-          .from('chats')
-          .select('*')
-          .eq('task_id', selectedTask.id)
-          .eq('customer_id', selectedTask.customer_id)
-          .eq('tasker_id', application.tasker_id)
-          .limit(1)
-
-        if (checkError) {
-          console.warn('Error checking for existing chat:', checkError)
-        } else if (existingChat && existingChat.length > 0) {
-          // Chat already exists, no need to create
-        } else {
-          // Create new chat
-          const { error: chatError } = await supabase
-            .from('chats')
-            .insert({
-              task_id: selectedTask.id,
-              customer_id: selectedTask.customer_id,
-              tasker_id: application.tasker_id
-            })
-
-          if (chatError) {
-            if (chatError.code === '23505') {
-
-            } else {
-              console.warn('Failed to create chat:', chatError)
-            }
-          } else {
-
-          }
-        }
-      } catch (chatErr) {
-        console.warn('Error creating chat:', chatErr)
-        // Don't fail the whole operation if chat creation fails
-      }
+      setLoadingApplications(true)
       
+      // Use transaction service for atomic operation
+      const result = await TransactionService.acceptTaskApplication(
+        application.id,
+        selectedTask.id,
+        application.tasker_id,
+        selectedTask.customer_id
+      )
+
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to accept application')
+      }
+
       // Send notification
       await notifyApplicationAccepted(
         application.tasker_id,
         selectedTask.id,
-        selectedTask.title
+        selectedTask?.title || 'Untitled Task'
       )
       
       Alert.alert(
@@ -215,7 +167,7 @@ export default function TaskDetail() {
       await notifyApplicationDeclined(
         application.tasker_id,
         selectedTask.id,
-        selectedTask.title
+        selectedTask?.title || 'Untitled Task'
       )
       
       Alert.alert('Application Declined', 'The tasker has been notified that their application was declined.')
@@ -237,18 +189,18 @@ export default function TaskDetail() {
 
   if (loading) {
     return (
-      <View style={styles.container}>
+      <SafeAreaView style={styles.container}>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={Colors.primary[500]} />
           <Text style={styles.loadingText}>Loading task details...</Text>
         </View>
-      </View>
+      </SafeAreaView>
     )
   }
 
   if (error || !selectedTask) {
     return (
-      <View style={styles.container}>
+      <SafeAreaView style={styles.container}>
         <View style={styles.errorContainer}>
           <Ionicons name="alert-circle" size={48} color={Colors.error[500]} />
           <Text style={styles.errorText}>
@@ -258,12 +210,12 @@ export default function TaskDetail() {
             <Text style={styles.retryButtonText}>Retry</Text>
           </TouchableOpacity>
         </View>
-      </View>
+      </SafeAreaView>
     )
   }
 
   return (
-    <View style={styles.container} key={`task-detail-${id}`}>
+    <SafeAreaView style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity 
@@ -285,36 +237,132 @@ export default function TaskDetail() {
         <View style={styles.taskSection}>
           <Text style={styles.sectionTitle}>Task Information</Text>
           <View style={styles.taskCard}>
-            <Text style={styles.taskTitle}>{selectedTask.title}</Text>
-            <Text style={styles.taskDescription}>{selectedTask.description}</Text>
+            <Text style={styles.taskTitle}>{selectedTask?.title || 'Untitled Task'}</Text>
+            <Text style={styles.taskDescription}>{selectedTask?.description || 'No description provided'}</Text>
             
             <View style={styles.taskDetails}>
+              {/* Category */}
+              {selectedTask?.task_categories && (
+                <View style={styles.detailRow}>
+                  <Ionicons name="folder" size={16} color={Colors.text.secondary} />
+                  <Text style={styles.detailText}>
+                    Category: {selectedTask.task_categories.name}
+                  </Text>
+                </View>
+              )}
+              
+              {/* Location */}
               <View style={styles.detailRow}>
                 <Ionicons name="location" size={16} color={Colors.text.secondary} />
                 <Text style={styles.detailText}>
-                  {selectedTask.address}, {selectedTask.city}, {selectedTask.state}
+                  {selectedTask?.address || 'Location not specified'}, {selectedTask?.city || ''}, {selectedTask?.state || ''}
                 </Text>
               </View>
               
+              {/* Budget */}
               <View style={styles.detailRow}>
                 <Ionicons name="cash" size={16} color={Colors.text.secondary} />
                 <Text style={styles.detailText}>
-                  Budget: ${selectedTask.budget}
+                  Budget: ETB {selectedTask?.budget || 'Not specified'}
                 </Text>
               </View>
               
+              {/* Task Size */}
+              {selectedTask?.task_size && (
+                <View style={styles.detailRow}>
+                  <Ionicons name="resize" size={16} color={Colors.text.secondary} />
+                  <Text style={styles.detailText}>
+                    Size: {selectedTask.task_size.charAt(0).toUpperCase() + selectedTask.task_size.slice(1)}
+                  </Text>
+                </View>
+              )}
+              
+              {/* Urgency */}
+              {selectedTask?.urgency && (
+                <View style={styles.detailRow}>
+                  <Ionicons name="flash" size={16} color={Colors.text.secondary} />
+                  <Text style={styles.detailText}>
+                    Urgency: {selectedTask.urgency.charAt(0).toUpperCase() + selectedTask.urgency.replace('_', ' ').slice(1)}
+                  </Text>
+                </View>
+              )}
+              
+              {/* Task Date */}
+              {selectedTask?.task_date && (
+                <View style={styles.detailRow}>
+                  <Ionicons name="calendar" size={16} color={Colors.text.secondary} />
+                  <Text style={styles.detailText}>
+                    Date: {new Date(selectedTask.task_date).toLocaleDateString()}
+                  </Text>
+                </View>
+              )}
+              
+              {/* Task Time */}
+              {selectedTask?.task_time && (
+                <View style={styles.detailRow}>
+                  <Ionicons name="time" size={16} color={Colors.text.secondary} />
+                  <Text style={styles.detailText}>
+                    Time: {selectedTask.task_time}
+                  </Text>
+                </View>
+              )}
+              
+              {/* Status */}
               <View style={styles.detailRow}>
-                <Ionicons name="time" size={16} color={Colors.text.secondary} />
+                <Ionicons name="checkmark-circle" size={16} color={Colors.text.secondary} />
+                <Text style={[styles.detailText, styles.statusText]}>
+                  Status: {selectedTask?.status?.charAt(0).toUpperCase() + selectedTask?.status?.slice(1).replace('_', ' ') || 'Unknown'}
+                </Text>
+              </View>
+              
+              {/* Posted Date */}
+              <View style={styles.detailRow}>
+                <Ionicons name="time-outline" size={16} color={Colors.text.secondary} />
                 <Text style={styles.detailText}>
-                  Posted {new Date(selectedTask.created_at).toLocaleDateString()}
+                  Posted: {new Date(selectedTask?.created_at).toLocaleDateString()}
                 </Text>
               </View>
             </View>
           </View>
         </View>
 
+        {/* Customer Information */}
+        {selectedTask?.customer_profile && (
+          <View style={styles.customerSection}>
+            <Text style={styles.sectionTitle}>Customer Information</Text>
+            <View style={styles.customerCard}>
+              <View style={styles.customerInfo}>
+                <View style={styles.customerNameRow}>
+                  <Text style={styles.customerName}>
+                    {selectedTask.customer_profile.full_name || 'Unknown Customer'}
+                  </Text>
+                  {selectedTask.customer_profile.rating_average && (
+                    <View style={styles.ratingContainer}>
+                      <Ionicons name="star" size={14} color="#FFD700" />
+                      <Text style={styles.ratingText}>
+                        {selectedTask.customer_profile.rating_average.toFixed(1)}
+                      </Text>
+                      <Text style={styles.ratingCount}>
+                        ({selectedTask.customer_profile.rating_count || 0})
+                      </Text>
+                    </View>
+                  )}
+                </View>
+                <Text style={styles.customerUsername}>
+                  @{selectedTask.customer_profile.username || 'unknown'}
+                </Text>
+                {selectedTask.customer_profile.bio && (
+                  <Text style={styles.customerBio}>
+                    {selectedTask.customer_profile.bio}
+                  </Text>
+                )}
+              </View>
+            </View>
+          </View>
+        )}
+
         {/* Applications Section - Only show for task owners */}
-        {(profile?.role === 'customer' || profile?.role === 'both') && selectedTask.customer_id === profile.id && (
+        {profile?.role && selectedTask.customer_id === profile.id && (
           <View style={styles.applicationsSection}>
             <Text style={styles.sectionTitle}>
               Applications ({applications.length})
@@ -355,7 +403,7 @@ export default function TaskDetail() {
         taskerProfile={selectedTaskerProfile}
         onClose={() => setShowTaskerProfile(false)}
       />
-    </View>
+    </SafeAreaView>
   )
 }
 
@@ -490,5 +538,55 @@ const styles = StyleSheet.create({
     fontSize: Typography.fontSize.md,
     fontWeight: Typography.fontWeight.semibold,
     color: Colors.text.inverse,
+  },
+  statusText: {
+    fontWeight: Typography.fontWeight.semibold,
+  },
+  customerSection: {
+    marginBottom: Spacing.lg,
+  },
+  customerCard: {
+    backgroundColor: Colors.background.secondary,
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.md,
+    borderWidth: 1,
+    borderColor: Colors.border.light,
+  },
+  customerInfo: {
+    gap: Spacing.xs,
+  },
+  customerNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  customerName: {
+    fontSize: Typography.fontSize.lg,
+    fontWeight: Typography.fontWeight.semibold,
+    color: Colors.text.primary,
+  },
+  ratingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  ratingText: {
+    fontSize: Typography.fontSize.sm,
+    fontWeight: Typography.fontWeight.semibold,
+    color: Colors.text.primary,
+  },
+  ratingCount: {
+    fontSize: Typography.fontSize.sm,
+    color: Colors.text.secondary,
+  },
+  customerUsername: {
+    fontSize: Typography.fontSize.md,
+    color: Colors.text.secondary,
+  },
+  customerBio: {
+    fontSize: Typography.fontSize.sm,
+    color: Colors.text.secondary,
+    fontStyle: 'italic',
+    marginTop: Spacing.xs,
   },
 })

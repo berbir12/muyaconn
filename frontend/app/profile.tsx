@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import {
   View,
   Text,
@@ -9,13 +9,16 @@ import {
   Alert,
   Image,
   Switch,
+  Dimensions,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
+import { LinearGradient } from 'expo-linear-gradient'
 
 import * as ImagePicker from 'expo-image-picker'
 import { router } from 'expo-router'
 import { useAuth } from '../contexts/AuthContext'
+import { useLanguage } from '../contexts/LanguageContext'
 import { supabase } from '../lib/supabase'
 import { useNotifications } from '../hooks/useNotifications'
 import { ImageUploadService } from '../services/ImageUploadService'
@@ -27,8 +30,11 @@ import { useBookings } from '../hooks/useBookings'
 
 import TaskerApplicationModal from '../components/TaskerApplicationModal'
 
+const { width } = Dimensions.get('window')
+
 export default function Profile() {
   const { profile, user, refreshProfile, signOut } = useAuth()
+  const { t } = useLanguage()
   const { bookings, loading: bookingsLoading, error: bookingsError } = useBookings()
   const { stats: reviewStats } = useUserReviewStats(user?.id || '')
   const [editing, setEditing] = useState(false)
@@ -73,13 +79,7 @@ export default function Profile() {
     }
   }, [profile])
 
-  useEffect(() => {
-    if (user?.id) {
-      checkTaskerApplication()
-    }
-  }, [user?.id])
-
-  const checkTaskerApplication = async () => {
+  const checkTaskerApplication = useCallback(async () => {
     try {
       const { data, error } = await supabase
         .from('tasker_applications')
@@ -98,7 +98,13 @@ export default function Profile() {
     } catch (error) {
       console.error('Error checking tasker application:', error)
     }
-  }
+  }, [user?.id])
+
+  useEffect(() => {
+    if (user?.id) {
+      checkTaskerApplication()
+    }
+  }, [user?.id, checkTaskerApplication])
 
   const handleSave = async () => {
     if (!username || !fullName || !user) {
@@ -313,130 +319,146 @@ export default function Profile() {
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <View style={styles.headerContent}>
-          <Text style={styles.headerTitle}>Profile</Text>
-          <TouchableOpacity 
-            style={[styles.editButton, editing && styles.editButtonActive]} 
-            onPress={() => setEditing(!editing)}
-          >
-            <Ionicons 
-              name={editing ? "close" : "create-outline"} 
-              size={20} 
-              color={editing ? Colors.text.inverse : Colors.primary[500]} 
-            />
-            <Text style={[styles.editButtonText, editing && styles.editButtonTextActive]}>
-              {editing ? 'Cancel' : 'Edit'}
-            </Text>
-          </TouchableOpacity>
+      {/* Modern Header with Gradient */}
+      <LinearGradient
+        colors={[Colors.primary[500], Colors.primary[600]]}
+        style={styles.headerGradient}
+      >
+        <View style={styles.header}>
+          <View style={styles.headerContent}>
+            <Text style={styles.headerTitle}>Profile</Text>
+            <View style={styles.headerActions}>
+              <TouchableOpacity 
+                style={styles.headerButton}
+                onPress={() => router.push('/settings')}
+              >
+                <Ionicons name="settings-outline" size={24} color={Colors.text.inverse} />
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.headerButton, editing && styles.headerButtonActive]} 
+                onPress={() => setEditing(!editing)}
+              >
+                <Ionicons 
+                  name={editing ? "close" : "create-outline"} 
+                  size={24} 
+                  color={Colors.text.inverse} 
+                />
+              </TouchableOpacity>
+            </View>
+          </View>
         </View>
-      </View>
+      </LinearGradient>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Hero Profile Section */}
+        {/* Modern Hero Section */}
         <View style={styles.heroSection}>
           <View style={styles.avatarContainer}>
-            <Image 
-              source={{ 
-                uri: avatarUri || profile.avatar_url || 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
-              }} 
-              style={styles.avatar}
-              key={`avatar-${profile?.id}`}
-            />
-            {editing && (
-              <TouchableOpacity 
-                style={styles.changePhotoButton}
-                onPress={handleChangeAvatar}
-                disabled={loading}
-              >
-                <Ionicons name="camera" size={20} color={Colors.text.inverse} />
-              </TouchableOpacity>
-            )}
-          </View>
-          
-          <Text style={styles.profileName}>{profile.full_name}</Text>
-          <Text style={styles.profileUsername}>@{profile.username}</Text>
-          
-          <View style={styles.roleBadge}>
-            <Ionicons 
-              name={isTasker ? "briefcase" : "person"} 
-              size={16} 
-              color={Colors.primary[500]} 
-            />
-            <Text style={styles.roleText}>
-              {profile.role === 'customer' ? 'Customer' : 
-               profile.role === 'both' ? 'Customer & Service Provider' : 'Service Provider'}
-            </Text>
-          </View>
-
-          {isTasker && (
-            <View style={styles.availabilityBadge}>
-              <View style={[styles.availabilityDot, { backgroundColor: available ? Colors.success[500] : Colors.error[500] }]} />
-              <Text style={styles.availabilityText}>
-                {available ? 'Available for Work' : 'Not Available'}
-              </Text>
+            <View style={styles.avatarWrapper}>
+              <Image 
+                source={{ 
+                  uri: avatarUri || profile.avatar_url || 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
+                }} 
+                style={styles.avatar}
+                key={`avatar-${profile?.id}`}
+              />
+              {editing && (
+                <TouchableOpacity 
+                  style={styles.changePhotoButton}
+                  onPress={handleChangeAvatar}
+                  disabled={loading}
+                >
+                  <Ionicons name="camera" size={18} color={Colors.text.inverse} />
+                </TouchableOpacity>
+              )}
             </View>
-          )}
+          </View>
+          
+          <View style={styles.profileInfo}>
+            <Text style={styles.profileName}>{profile.full_name}</Text>
+            <Text style={styles.profileUsername}>@{profile.username}</Text>
+            
+            <View style={styles.roleContainer}>
+              <View style={[styles.roleBadge, isTasker && styles.roleBadgeTasker]}>
+                <Ionicons 
+                  name={isTasker ? "briefcase" : "person"} 
+                  size={14} 
+                  color={isTasker ? Colors.success[600] : Colors.primary[600]} 
+                />
+                <Text style={[styles.roleText, isTasker && styles.roleTextTasker]}>
+                  {profile.role === 'customer' ? 'Customer' : 
+                   profile.role === 'both' ? 'Customer & Tasker' : 'Tasker'}
+                </Text>
+              </View>
+
+              {isTasker && (
+                <View style={[styles.availabilityBadge, !available && styles.availabilityBadgeOffline]}>
+                  <View style={[styles.availabilityDot, { backgroundColor: available ? Colors.success[500] : Colors.error[500] }]} />
+                  <Text style={[styles.availabilityText, !available && styles.availabilityTextOffline]}>
+                    {available ? 'Available' : 'Offline'}
+                  </Text>
+                </View>
+              )}
+            </View>
+          </View>
         </View>
 
-        {/* Stats Cards */}
+        {/* Modern Stats Section */}
         {isTasker && (
           <View style={styles.statsSection}>
             <View style={styles.statCard}>
+              <View style={styles.statIconContainer}>
+                <Ionicons name="checkmark-circle" size={24} color={Colors.success[500]} />
+              </View>
               <Text style={styles.statValue}>{profile.completed_tasks || 0}</Text>
-              <Text style={styles.statLabel}>Jobs Completed</Text>
+              <Text style={styles.statLabel}>Tasks Completed</Text>
             </View>
             <View style={styles.statCard}>
+              <View style={styles.statIconContainer}>
+                <Ionicons name="star" size={24} color={Colors.warning[500]} />
+              </View>
               <Text style={styles.statValue}>{profile.rating_average?.toFixed(1) || '0.0'}</Text>
               <Text style={styles.statLabel}>Rating</Text>
-              <View style={styles.ratingStars}>
-                {[1, 2, 3, 4, 5].map((star) => (
-                  <Ionicons 
-                    key={star} 
-                    name="star" 
-                    size={12} 
-                    color={star <= (profile.rating_average || 0) ? Colors.warning[500] : Colors.neutral[300]} 
-                  />
-                ))}
-              </View>
             </View>
             <View style={styles.statCard}>
+              <View style={styles.statIconContainer}>
+                <Ionicons name="chatbubble" size={24} color={Colors.primary[500]} />
+              </View>
               <Text style={styles.statValue}>{profile.rating_count || 0}</Text>
               <Text style={styles.statLabel}>Reviews</Text>
             </View>
           </View>
         )}
 
-        {/* Personal Information Card */}
-        <View style={styles.card}>
-          <View style={styles.cardHeader}>
-            <Ionicons name="person-outline" size={24} color={Colors.primary[500]} />
-            <Text style={styles.cardTitle}>Personal Information</Text>
-          </View>
-          
-          <View style={styles.cardContent}>
-            <View style={styles.fieldRow}>
-              <View style={styles.fieldContainer}>
-                <Text style={styles.fieldLabel}>Full Name *</Text>
+        {/* Information Sections */}
+        <View style={styles.sectionsContainer}>
+          {/* Basic Info Section */}
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Ionicons name="person-outline" size={20} color={Colors.primary[500]} />
+              <Text style={styles.sectionTitle}>Basic Information</Text>
+            </View>
+            
+            <View style={styles.infoGrid}>
+              <View style={styles.infoItem}>
+                <Text style={styles.infoLabel}>Full Name</Text>
                 {editing ? (
                   <TextInput
-                    style={styles.input}
+                    style={styles.infoInput}
                     value={fullName}
                     onChangeText={setFullName}
                     placeholder="Enter your full name"
                     placeholderTextColor={Colors.text.tertiary}
                   />
                 ) : (
-                  <Text style={styles.fieldValue}>{profile.full_name}</Text>
+                  <Text style={styles.infoValue}>{profile.full_name}</Text>
                 )}
               </View>
 
-              <View style={styles.fieldContainer}>
-                <Text style={styles.fieldLabel}>Username *</Text>
+              <View style={styles.infoItem}>
+                <Text style={styles.infoLabel}>Username</Text>
                 {editing ? (
                   <TextInput
-                    style={styles.input}
+                    style={styles.infoInput}
                     value={username}
                     onChangeText={setUsername}
                     placeholder="Enter your username"
@@ -444,115 +466,111 @@ export default function Profile() {
                     placeholderTextColor={Colors.text.tertiary}
                   />
                 ) : (
-                  <Text style={styles.fieldValue}>@{profile.username}</Text>
+                  <Text style={styles.infoValue}>@{profile.username}</Text>
                 )}
               </View>
-            </View>
 
-            <View style={styles.fieldContainer}>
-              <Text style={styles.fieldLabel}>Email</Text>
-              <Text style={styles.fieldValue}>{user?.email}</Text>
-            </View>
+              <View style={styles.infoItem}>
+                <Text style={styles.infoLabel}>Email</Text>
+                <Text style={styles.infoValue}>{user?.email}</Text>
+              </View>
 
-            <View style={styles.fieldContainer}>
-              <Text style={styles.fieldLabel}>Phone</Text>
-              {editing ? (
-                <TextInput
-                  style={styles.input}
-                  value={phone}
-                  onChangeText={setPhone}
-                  placeholder="Enter your phone number"
-                  keyboardType="phone-pad"
-                  placeholderTextColor={Colors.text.tertiary}
-                />
-              ) : (
-                <Text style={styles.fieldValue}>{profile.phone || 'Not provided'}</Text>
-              )}
-            </View>
-
-            <View style={styles.fieldContainer}>
-              <Text style={styles.fieldLabel}>Bio</Text>
-              {editing ? (
-                <TextInput
-                  style={[styles.input, styles.textArea]}
-                  value={bio}
-                  onChangeText={setBio}
-                  placeholder="Tell us about yourself and your services..."
-                  multiline
-                  numberOfLines={3}
-                  placeholderTextColor={Colors.text.tertiary}
-                />
-              ) : (
-                <Text style={styles.fieldValue}>{profile.bio || 'No bio provided'}</Text>
-              )}
-            </View>
-
-            <View style={styles.fieldContainer}>
-              <Text style={styles.fieldLabel}>Member Since</Text>
-              <Text style={styles.fieldValue}>
-                {new Date(profile.created_at).toLocaleDateString()}
-              </Text>
-            </View>
-          </View>
-        </View>
-
-        {/* Location Card */}
-        <View style={styles.card}>
-          <View style={styles.cardHeader}>
-            <Ionicons name="location-outline" size={24} color={Colors.primary[500]} />
-            <Text style={styles.cardTitle}>Location</Text>
-          </View>
-          
-          <View style={styles.cardContent}>
-            <View style={styles.fieldRow}>
-              <View style={styles.fieldContainer}>
-                <Text style={styles.fieldLabel}>City</Text>
+              <View style={styles.infoItem}>
+                <Text style={styles.infoLabel}>Phone</Text>
                 {editing ? (
                   <TextInput
-                    style={styles.input}
+                    style={styles.infoInput}
+                    value={phone}
+                    onChangeText={setPhone}
+                    placeholder="Enter your phone number"
+                    keyboardType="phone-pad"
+                    placeholderTextColor={Colors.text.tertiary}
+                  />
+                ) : (
+                  <Text style={styles.infoValue}>{profile.phone || 'Not provided'}</Text>
+                )}
+              </View>
+
+              <View style={[styles.infoItem, styles.infoItemFull]}>
+                <Text style={styles.infoLabel}>Bio</Text>
+                {editing ? (
+                  <TextInput
+                    style={[styles.infoInput, styles.infoTextArea]}
+                    value={bio}
+                    onChangeText={setBio}
+                    placeholder="Tell us about yourself and your services..."
+                    multiline
+                    numberOfLines={3}
+                    placeholderTextColor={Colors.text.tertiary}
+                  />
+                ) : (
+                  <Text style={styles.infoValue}>{profile.bio || 'No bio provided'}</Text>
+                )}
+              </View>
+
+              <View style={styles.infoItem}>
+                <Text style={styles.infoLabel}>Member Since</Text>
+                <Text style={styles.infoValue}>
+                  {new Date(profile.created_at).toLocaleDateString()}
+                </Text>
+              </View>
+            </View>
+          </View>
+
+          {/* Location Section */}
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Ionicons name="location-outline" size={20} color={Colors.primary[500]} />
+              <Text style={styles.sectionTitle}>Location</Text>
+            </View>
+            
+            <View style={styles.infoGrid}>
+              <View style={styles.infoItem}>
+                <Text style={styles.infoLabel}>City</Text>
+                {editing ? (
+                  <TextInput
+                    style={styles.infoInput}
                     value={city}
                     onChangeText={setCity}
                     placeholder="Enter your city"
                     placeholderTextColor={Colors.text.tertiary}
                   />
                 ) : (
-                  <Text style={styles.fieldValue}>{profile.city || 'Not provided'}</Text>
+                  <Text style={styles.infoValue}>{profile.city || 'Not provided'}</Text>
                 )}
               </View>
 
-              <View style={styles.fieldContainer}>
-                <Text style={styles.fieldLabel}>State</Text>
+              <View style={styles.infoItem}>
+                <Text style={styles.infoLabel}>State</Text>
                 {editing ? (
                   <TextInput
-                    style={styles.input}
+                    style={styles.infoInput}
                     value={state}
                     onChangeText={setState}
                     placeholder="Enter your state"
                     placeholderTextColor={Colors.text.tertiary}
                   />
                 ) : (
-                  <Text style={styles.fieldValue}>{profile.state || 'Not provided'}</Text>
+                  <Text style={styles.infoValue}>{profile.state || 'Not provided'}</Text>
                 )}
               </View>
             </View>
           </View>
-        </View>
 
-        {/* Professional Information Card */}
-        {isTasker && (
-          <View style={styles.card}>
-            <View style={styles.cardHeader}>
-              <Ionicons name="briefcase-outline" size={24} color={Colors.primary[500]} />
-              <Text style={styles.cardTitle}>Professional Information</Text>
-            </View>
-            
-            <View style={styles.cardContent}>
-              <View style={styles.fieldRow}>
-                <View style={styles.fieldContainer}>
-                  <Text style={styles.fieldLabel}>Hourly Rate ($)</Text>
+          {/* Professional Information Section */}
+          {isTasker && (
+            <View style={styles.section}>
+              <View style={styles.sectionHeader}>
+                <Ionicons name="briefcase-outline" size={20} color={Colors.primary[500]} />
+                <Text style={styles.sectionTitle}>Professional Information</Text>
+              </View>
+              
+              <View style={styles.infoGrid}>
+                <View style={styles.infoItem}>
+                  <Text style={styles.infoLabel}>Hourly Rate</Text>
                   {editing ? (
                     <TextInput
-                      style={styles.input}
+                      style={styles.infoInput}
                       value={hourlyRate}
                       onChangeText={setHourlyRate}
                       placeholder="Enter your hourly rate"
@@ -560,17 +578,17 @@ export default function Profile() {
                       placeholderTextColor={Colors.text.tertiary}
                     />
                   ) : (
-                    <Text style={styles.fieldValue}>
+                    <Text style={styles.infoValue}>
                       ${profile.hourly_rate || 'Not set'}/hr
                     </Text>
                   )}
                 </View>
 
-                <View style={styles.fieldContainer}>
-                  <Text style={styles.fieldLabel}>Years of Experience</Text>
+                <View style={styles.infoItem}>
+                  <Text style={styles.infoLabel}>Experience</Text>
                   {editing ? (
                     <TextInput
-                      style={styles.input}
+                      style={styles.infoInput}
                       value={experienceYears}
                       onChangeText={setExperienceYears}
                       placeholder="Enter years of experience"
@@ -578,242 +596,174 @@ export default function Profile() {
                       placeholderTextColor={Colors.text.tertiary}
                     />
                   ) : (
-                    <Text style={styles.fieldValue}>
+                    <Text style={styles.infoValue}>
                       {profile.experience_years || 'Not specified'} years
                     </Text>
                   )}
                 </View>
-              </View>
 
-              <View style={styles.fieldContainer}>
-                <Text style={styles.fieldLabel}>Response Time</Text>
-                {editing ? (
-                  <TextInput
-                    style={styles.input}
-                    value={responseTime}
-                    onChangeText={setResponseTime}
-                    placeholder="e.g., Within 1 hour"
-                    placeholderTextColor={Colors.text.tertiary}
-                  />
-                ) : (
-                  <Text style={styles.fieldValue}>{profile.response_time || 'Not specified'}</Text>
-                )}
-              </View>
-
-              <View style={styles.fieldContainer}>
-                <Text style={styles.fieldLabel}>Skills</Text>
-                {editing ? (
-                  <TextInput
-                    style={[styles.input, styles.textArea]}
-                    value={skills}
-                    onChangeText={setSkills}
-                    placeholder="e.g., Plumbing, Electrical, Carpentry"
-                    multiline
-                    numberOfLines={2}
-                    placeholderTextColor={Colors.text.tertiary}
-                  />
-                ) : (
-                  <View style={styles.skillsContainer}>
-                    {profile.skills && profile.skills.length > 0 ? (
-                      profile.skills.map((skill, index) => (
-                        <View key={index} style={styles.skillChip}>
-                          <Text style={styles.skillText}>{skill}</Text>
-                        </View>
-                      ))
-                    ) : (
-                      <Text style={styles.fieldValue}>No skills listed</Text>
-                    )}
-                  </View>
-                )}
-              </View>
-
-              <View style={styles.fieldContainer}>
-                <Text style={styles.fieldLabel}>Certifications</Text>
-                {editing ? (
-                  <TextInput
-                    style={[styles.input, styles.textArea]}
-                    value={certifications}
-                    onChangeText={setCertifications}
-                    placeholder="e.g., Licensed Plumber, OSHA Certified"
-                    multiline
-                    numberOfLines={2}
-                    placeholderTextColor={Colors.text.tertiary}
-                  />
-                ) : (
-                  <View style={styles.skillsContainer}>
-                    {profile.certifications && profile.certifications.length > 0 ? (
-                      profile.certifications.map((cert, index) => (
-                        <View key={index} style={styles.skillChip}>
-                          <Text style={styles.skillText}>{cert}</Text>
-                        </View>
-                      ))
-                    ) : (
-                      <Text style={styles.fieldValue}>No certifications listed</Text>
-                    )}
-                  </View>
-                )}
-              </View>
-
-              <View style={styles.fieldContainer}>
-                <Text style={styles.fieldLabel}>Languages</Text>
-                {editing ? (
-                  <TextInput
-                    style={[styles.input, styles.textArea]}
-                    value={languages}
-                    onChangeText={setLanguages}
-                    placeholder="e.g., English, Spanish"
-                    multiline
-                    numberOfLines={2}
-                    placeholderTextColor={Colors.text.tertiary}
-                  />
-                ) : (
-                  <View style={styles.skillsContainer}>
-                    {profile.languages && profile.languages.length > 0 ? (
-                      profile.languages.map((lang, index) => (
-                        <View key={index} style={styles.skillChip}>
-                          <Text style={styles.skillText}>{lang}</Text>
-                        </View>
-                      ))
-                    ) : (
-                      <Text style={styles.fieldValue}>No languages listed</Text>
-                    )}
-                  </View>
-                )}
-              </View>
-
-              <View style={styles.fieldContainer}>
-                <Text style={styles.fieldLabel}>Available for Work</Text>
-                {editing ? (
-                  <View style={styles.switchContainer}>
-                    <Switch
-                      value={available}
-                      onValueChange={setAvailable}
-                      trackColor={{ false: Colors.neutral[300], true: Colors.primary[200] }}
-                      thumbColor={available ? Colors.primary[500] : Colors.neutral[400]}
+                <View style={styles.infoItem}>
+                  <Text style={styles.infoLabel}>Response Time</Text>
+                  {editing ? (
+                    <TextInput
+                      style={styles.infoInput}
+                      value={responseTime}
+                      onChangeText={setResponseTime}
+                      placeholder="e.g., Within 1 hour"
+                      placeholderTextColor={Colors.text.tertiary}
                     />
-                    <Text style={styles.switchLabel}>
-                      {available ? 'Available' : 'Not Available'}
-                    </Text>
-                  </View>
-                ) : (
-                  <View style={styles.availabilityStatus}>
-                    <View style={[styles.availabilityDot, { backgroundColor: available ? Colors.success[500] : Colors.error[500] }]} />
-                    <Text style={[styles.fieldValue, { color: available ? Colors.success[600] : Colors.error[600] }]}>
-                      {available ? 'Available' : 'Not Available'}
-                    </Text>
-                  </View>
-                )}
-              </View>
-            </View>
-          </View>
-        )}
+                  ) : (
+                    <Text style={styles.infoValue}>{profile.response_time || 'Not specified'}</Text>
+                  )}
+                </View>
 
-        {/* My Bookings Card */}
-        <View style={styles.card}>
-          <View style={styles.cardHeader}>
-            <Ionicons name="calendar-outline" size={24} color={Colors.primary[500]} />
-            <Text style={styles.cardTitle}>My Bookings</Text>
-          </View>
-          
-          <View style={styles.cardContent}>
-            {bookingsLoading ? (
-              <View style={styles.loadingContainer}>
-                <Text style={styles.loadingText}>Loading bookings...</Text>
-              </View>
-            ) : bookingsError ? (
-              <View style={styles.errorContainer}>
-                <Text style={styles.errorText}>Error loading bookings: {bookingsError}</Text>
-              </View>
-            ) : bookings.length === 0 ? (
-              <View style={styles.emptyContainer}>
-                <Ionicons name="calendar-outline" size={48} color={Colors.neutral[300]} />
-                <Text style={styles.emptyText}>No bookings yet</Text>
-                <Text style={styles.emptySubtext}>Your upcoming and past bookings will appear here</Text>
-              </View>
-            ) : (
-              <View style={styles.bookingsList}>
-                {bookings.slice(0, 3).map((booking) => (
-                  <View key={booking.id} style={styles.bookingItem}>
-                    <View style={styles.bookingHeader}>
-                      <Text style={styles.bookingService}>{booking.title}</Text>
-                      <View style={[styles.statusBadge, { backgroundColor: getStatusColor(booking.status) }]}>
-                        <Text style={styles.statusText}>{booking.status}</Text>
-                      </View>
+                <View style={[styles.infoItem, styles.infoItemFull]}>
+                  <Text style={styles.infoLabel}>Skills</Text>
+                  {editing ? (
+                    <TextInput
+                      style={[styles.infoInput, styles.infoTextArea]}
+                      value={skills}
+                      onChangeText={setSkills}
+                      placeholder="e.g., Plumbing, Electrical, Carpentry"
+                      multiline
+                      numberOfLines={2}
+                      placeholderTextColor={Colors.text.tertiary}
+                    />
+                  ) : (
+                    <View style={styles.skillsContainer}>
+                      {profile.skills && profile.skills.length > 0 ? (
+                        profile.skills.map((skill, index) => (
+                          <View key={index} style={styles.skillChip}>
+                            <Text style={styles.skillText}>{skill}</Text>
+                          </View>
+                        ))
+                      ) : (
+                        <Text style={styles.infoValue}>No skills listed</Text>
+                      )}
                     </View>
-                    <Text style={styles.bookingDate}>
-                      {booking.task_date 
-                        ? new Date(booking.task_date).toLocaleDateString()
-                        : 'Flexible date'
-                      }
-                      {booking.task_time && ` at ${booking.task_time}`}
-                    </Text>
-                    <Text style={styles.bookingPrice}>
-                      {booking.budget 
-                        ? `$${booking.budget}`
-                        : booking.final_price 
-                          ? `$${booking.final_price}`
-                          : 'Price TBD'
-                      }
-                    </Text>
-                    <Text style={styles.bookingPerson}>
-                      {profile?.id === booking.customer_id ? 'with' : 'for'} {
-                        profile?.id === booking.customer_id 
-                          ? booking.tasker_profile?.full_name 
-                          : booking.customer_profile?.full_name
-                      }
-                    </Text>
-                  </View>
-                ))}
-                {bookings.length > 3 && (
-                  <TouchableOpacity 
-                    style={styles.viewAllButton}
-                    onPress={() => router.push('/jobs')}
-                  >
-                    <Text style={styles.viewAllText}>View All {bookings.length} Tasks</Text>
-                    <Ionicons name="chevron-forward" size={16} color={Colors.primary[500]} />
-                  </TouchableOpacity>
-                )}
+                  )}
+                </View>
+
+                <View style={[styles.infoItem, styles.infoItemFull]}>
+                  <Text style={styles.infoLabel}>Certifications</Text>
+                  {editing ? (
+                    <TextInput
+                      style={[styles.infoInput, styles.infoTextArea]}
+                      value={certifications}
+                      onChangeText={setCertifications}
+                      placeholder="e.g., Licensed Plumber, OSHA Certified"
+                      multiline
+                      numberOfLines={2}
+                      placeholderTextColor={Colors.text.tertiary}
+                    />
+                  ) : (
+                    <View style={styles.skillsContainer}>
+                      {profile.certifications && profile.certifications.length > 0 ? (
+                        profile.certifications.map((cert, index) => (
+                          <View key={index} style={styles.skillChip}>
+                            <Text style={styles.skillText}>{cert}</Text>
+                          </View>
+                        ))
+                      ) : (
+                        <Text style={styles.infoValue}>No certifications listed</Text>
+                      )}
+                    </View>
+                  )}
+                </View>
+
+                <View style={[styles.infoItem, styles.infoItemFull]}>
+                  <Text style={styles.infoLabel}>Languages</Text>
+                  {editing ? (
+                    <TextInput
+                      style={[styles.infoInput, styles.infoTextArea]}
+                      value={languages}
+                      onChangeText={setLanguages}
+                      placeholder="e.g., English, Spanish"
+                      multiline
+                      numberOfLines={2}
+                      placeholderTextColor={Colors.text.tertiary}
+                    />
+                  ) : (
+                    <View style={styles.skillsContainer}>
+                      {profile.languages && profile.languages.length > 0 ? (
+                        profile.languages.map((lang, index) => (
+                          <View key={index} style={styles.skillChip}>
+                            <Text style={styles.skillText}>{lang}</Text>
+                          </View>
+                        ))
+                      ) : (
+                        <Text style={styles.infoValue}>No languages listed</Text>
+                      )}
+                    </View>
+                  )}
+                </View>
+
+                <View style={[styles.infoItem, styles.infoItemFull]}>
+                  <Text style={styles.infoLabel}>Available for Work</Text>
+                  {editing ? (
+                    <View style={styles.switchContainer}>
+                      <Switch
+                        value={available}
+                        onValueChange={setAvailable}
+                        trackColor={{ false: Colors.neutral[300], true: Colors.primary[200] }}
+                        thumbColor={available ? Colors.primary[500] : Colors.neutral[400]}
+                      />
+                      <Text style={styles.switchLabel}>
+                        {available ? 'Available' : 'Not Available'}
+                      </Text>
+                    </View>
+                  ) : (
+                    <View style={styles.availabilityStatus}>
+                      <View style={[styles.availabilityDot, { backgroundColor: available ? Colors.success[500] : Colors.error[500] }]} />
+                      <Text style={[styles.infoValue, { color: available ? Colors.success[600] : Colors.error[600] }]}>
+                        {available ? 'Available' : 'Not Available'}
+                      </Text>
+                    </View>
+                  )}
+                </View>
               </View>
-            )}
-          </View>
-        </View>
-
-        {/* Quick Actions Card */}
-        <View style={styles.card}>
-          <View style={styles.cardHeader}>
-            <Ionicons name="settings-outline" size={24} color={Colors.primary[500]} />
-            <Text style={styles.cardTitle}>Quick Actions</Text>
-          </View>
-          
-          <TouchableOpacity style={styles.actionItem}>
-            <Ionicons name="notifications-outline" size={24} color={Colors.primary[500]} />
-            <Text style={styles.actionText}>Notifications</Text>
-            <Ionicons name="chevron-forward" size={20} color={Colors.neutral[400]} />
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.actionItem}>
-            <Ionicons name="shield-outline" size={24} color={Colors.primary[500]} />
-            <Text style={styles.actionText}>Privacy & Security</Text>
-            <Ionicons name="chevron-forward" size={20} color={Colors.neutral[400]} />
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.actionItem}>
-            <Ionicons name="help-circle-outline" size={24} color={Colors.primary[500]} />
-            <Text style={styles.actionText}>Help & Support</Text>
-            <Ionicons name="chevron-forward" size={20} color={Colors.neutral[400]} />
-          </TouchableOpacity>
-        </View>
-
-        {/* Become a Tasker Card - Only show for clients */}
-        {profile?.role === 'customer' && (
-          <View style={styles.card}>
-            <View style={styles.cardHeader}>
-              <Ionicons name="briefcase-outline" size={24} color={Colors.primary[500]} />
-              <Text style={styles.cardTitle}>Become a Tasker</Text>
             </View>
-            
+          )}
+        </View>
+
+        {/* Quick Actions */}
+        <View style={styles.actionsContainer}>
+          <View style={styles.actionsGrid}>
+            <TouchableOpacity style={styles.actionButton} onPress={() => router.push('/jobs')}>
+              <View style={styles.actionIconContainer}>
+                <Ionicons name="briefcase-outline" size={24} color={Colors.primary[500]} />
+              </View>
+              <Text style={styles.actionButtonText}>My Jobs</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.actionButton} onPress={() => router.push('/chats')}>
+              <View style={styles.actionIconContainer}>
+                <Ionicons name="chatbubble-outline" size={24} color={Colors.primary[500]} />
+              </View>
+              <Text style={styles.actionButtonText}>Messages</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.actionButton} onPress={() => router.push('/settings')}>
+              <View style={styles.actionIconContainer}>
+                <Ionicons name="settings-outline" size={24} color={Colors.primary[500]} />
+              </View>
+              <Text style={styles.actionButtonText}>Settings</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.actionButton}>
+              <View style={styles.actionIconContainer}>
+                <Ionicons name="help-circle-outline" size={24} color={Colors.primary[500]} />
+              </View>
+              <Text style={styles.actionButtonText}>Help</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Tasker Application Section */}
+        {profile?.role === 'customer' && (
+          <View style={styles.taskerSection}>
             {taskerApplication ? (
-              <View style={styles.applicationStatusContainer}>
+              <View style={styles.applicationStatus}>
                 <View style={styles.applicationStatusHeader}>
                   <Ionicons 
                     name={
@@ -821,7 +771,7 @@ export default function Profile() {
                       taskerApplication.status === 'rejected' ? 'close-circle' :
                       'time'
                     } 
-                    size={24} 
+                    size={20} 
                     color={
                       taskerApplication.status === 'approved' ? Colors.success[500] :
                       taskerApplication.status === 'rejected' ? Colors.error[500] :
@@ -829,114 +779,52 @@ export default function Profile() {
                     } 
                   />
                   <Text style={styles.applicationStatusTitle}>
-                    Application Status: {taskerApplication.status.charAt(0).toUpperCase() + taskerApplication.status.slice(1)}
+                    Application: {taskerApplication.status.charAt(0).toUpperCase() + taskerApplication.status.slice(1)}
                   </Text>
                 </View>
-                
-                <Text style={styles.applicationStatusText}>
-                  {taskerApplication.status === 'pending' && 'Your application is under review. We will notify you once it is processed.'}
-                  {taskerApplication.status === 'approved' && 'Congratulations! Your application has been approved. You can now accept tasks.'}
-                  {taskerApplication.status === 'rejected' && 'Your application was not approved. You can reapply after addressing the feedback below.'}
-                </Text>
-                
-                {taskerApplication.status === 'rejected' && (
-                  <View style={styles.rejectionReasonContainer}>
-                    <Text style={styles.rejectionReasonTitle}>Rejection Reason:</Text>
-                    <Text style={styles.rejectionReasonText}>
-                      Your application was not approved. Please contact support for more details or reapply with improved information.
-                    </Text>
-                  </View>
-                )}
-                
-                <Text style={styles.applicationDate}>
-                  Applied on: {new Date(taskerApplication.created_at).toLocaleDateString()}
-                </Text>
                 
                 {taskerApplication.status === 'rejected' && (
                   <TouchableOpacity 
                     style={styles.reapplyButton}
                     onPress={() => setIsTaskerApplicationModalVisible(true)}
                   >
-                    <Ionicons name="refresh" size={20} color={Colors.text.inverse} />
-                    <Text style={styles.reapplyButtonText}>Reapply Now</Text>
+                    <Ionicons name="refresh" size={16} color={Colors.text.inverse} />
+                    <Text style={styles.reapplyButtonText}>Reapply</Text>
                   </TouchableOpacity>
                 )}
               </View>
             ) : (
-              <>
-                <Text style={styles.becomeTaskerText}>
-                  Want to earn money by helping others? Apply to become a verified tasker and start accepting tasks.
-                </Text>
-                
-                <TouchableOpacity 
-                  style={styles.becomeTaskerButton}
-                  onPress={() => setIsTaskerApplicationModalVisible(true)}
-                >
-                  <Ionicons name="arrow-forward" size={20} color={Colors.text.inverse} />
-                  <Text style={styles.becomeTaskerButtonText}>Apply Now</Text>
-                </TouchableOpacity>
-              </>
+              <TouchableOpacity 
+                style={styles.becomeTaskerButton}
+                onPress={() => setIsTaskerApplicationModalVisible(true)}
+              >
+                <Ionicons name="briefcase-outline" size={20} color={Colors.text.inverse} />
+                <Text style={styles.becomeTaskerButtonText}>Become a Tasker</Text>
+              </TouchableOpacity>
             )}
           </View>
         )}
 
-        {/* Tasker Status Card - Only show for taskers */}
-        {profile?.role === 'tasker' && (
-          <View style={styles.card}>
-            <View style={styles.cardHeader}>
-              <Ionicons name="checkmark-circle" size={24} color={Colors.success[500]} />
-              <Text style={styles.cardTitle}>Tasker Status</Text>
-            </View>
-            
-            <Text style={styles.taskerStatusText}>
-              You are a verified tasker! You can now accept tasks and earn money.
-            </Text>
-            
-            <View style={styles.taskerStats}>
-              <View style={styles.taskerStat}>
-                <Text style={styles.taskerStatNumber}>{profile?.completed_tasks || 0}</Text>
-                <Text style={styles.taskerStatLabel}>Tasks Completed</Text>
-              </View>
-              <View style={styles.taskerStat}>
-                <Text style={styles.taskerStatNumber}>{reviewStats?.total_reviews || 0}</Text>
-                <Text style={styles.taskerStatLabel}>Reviews</Text>
-              </View>
-              <View style={styles.taskerStat}>
-                <Text style={styles.taskerStatNumber}>0</Text>
-                <Text style={styles.taskerStatLabel}>Earnings</Text>
-              </View>
-            </View>
-          </View>
-        )}
+        {/* Action Buttons */}
+        <View style={styles.bottomActions}>
+          {editing && (
+            <TouchableOpacity
+              style={[styles.saveButton, loading && styles.saveButtonDisabled]}
+              onPress={handleSave}
+              disabled={loading}
+            >
+              <Ionicons name="checkmark" size={20} color={Colors.text.inverse} />
+              <Text style={styles.saveButtonText}>
+                {loading ? 'Saving...' : 'Save Changes'}
+              </Text>
+            </TouchableOpacity>
+          )}
 
-        {/* Rating Display - Show for taskers and users with reviews */}
-        {(profile?.role === 'tasker' || profile?.role === 'both') && reviewStats && reviewStats.total_reviews > 0 && (
-          <RatingDisplay
-            stats={reviewStats}
-            showDetails={false}
-            style={styles.ratingCard}
-          />
-        )}
-
-        {/* Save Button (when editing) */}
-        {editing && (
-          <TouchableOpacity
-            style={[styles.saveButton, loading && styles.saveButtonDisabled]}
-            onPress={handleSave}
-            disabled={loading}
-          >
-            <Ionicons name="checkmark" size={20} color={Colors.text.inverse} />
-            <Text style={styles.saveButtonText}>
-              {loading ? 'Saving...' : 'Save Changes'}
-            </Text>
+          <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut}>
+            <Ionicons name="log-out-outline" size={20} color={Colors.error[500]} />
+            <Text style={styles.signOutText}>Sign Out</Text>
           </TouchableOpacity>
-        )}
-
-        {/* Sign Out Button */}
-        <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut}>
-          <Ionicons name="log-out-outline" size={24} color={Colors.error[500]} />
-          <Text style={styles.signOutText}>Sign Out</Text>
-        </TouchableOpacity>
+        </View>
       </ScrollView>
 
              <TaskerApplicationModal
@@ -970,49 +858,34 @@ const styles = StyleSheet.create({
     fontSize: 18,
     color: '#666',
   },
+  headerGradient: {
+    paddingTop: Spacing.lg,
+  },
   header: {
-    backgroundColor: Colors.background.primary,
     paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.lg,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border.light,
-    shadowColor: Colors.shadow.medium,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 3,
+    paddingBottom: Spacing.lg,
   },
   headerContent: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  headerButton: {
+    padding: Spacing.sm,
+    borderRadius: BorderRadius.md,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  headerButtonActive: {
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+  },
   headerTitle: {
     fontSize: Typography.fontSize.xl,
     fontWeight: Typography.fontWeight.bold,
-    color: Colors.text.primary,
-  },
-  editButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: Spacing.sm,
-    paddingHorizontal: Spacing.md,
-    backgroundColor: Colors.primary[100],
-    borderRadius: BorderRadius.full,
-    borderWidth: 1,
-    borderColor: Colors.primary[200],
-  },
-  editButtonActive: {
-    backgroundColor: Colors.error[500],
-    borderColor: Colors.error[500],
-  },
-  editButtonText: {
-    fontSize: Typography.fontSize.sm,
-    color: Colors.primary[700],
-    marginLeft: Spacing.xs,
-    fontWeight: Typography.fontWeight.semibold,
-  },
-  editButtonTextActive: {
     color: Colors.text.inverse,
   },
   content: {
@@ -1021,40 +894,43 @@ const styles = StyleSheet.create({
 
   heroSection: {
     backgroundColor: Colors.background.primary,
-    alignItems: 'center',
-    paddingVertical: Spacing.xxxl,
-    paddingHorizontal: Spacing.lg,
-    marginBottom: Spacing.lg,
-    borderRadius: BorderRadius.lg,
+    marginTop: -Spacing.xl,
     marginHorizontal: Spacing.lg,
+    borderRadius: BorderRadius.xl,
+    paddingTop: Spacing.xl,
+    paddingBottom: Spacing.lg,
+    paddingHorizontal: Spacing.lg,
     shadowColor: Colors.shadow.medium,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 4,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.15,
+    shadowRadius: 16,
+    elevation: 8,
     borderWidth: 1,
     borderColor: Colors.border.light,
   },
   avatarContainer: {
-    position: 'relative',
+    alignItems: 'center',
     marginBottom: Spacing.lg,
   },
+  avatarWrapper: {
+    position: 'relative',
+  },
   avatar: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
+    width: 100,
+    height: 100,
+    borderRadius: 50,
     backgroundColor: Colors.neutral[200],
     borderWidth: 4,
-    borderColor: Colors.primary[100],
+    borderColor: Colors.background.primary,
   },
   changePhotoButton: {
     position: 'absolute',
     bottom: 0,
     right: 0,
     backgroundColor: Colors.primary[500],
-    borderRadius: 20,
-    width: 40,
-    height: 40,
+    borderRadius: 16,
+    width: 32,
+    height: 32,
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: Colors.shadow.medium,
@@ -1063,53 +939,74 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
   },
+  profileInfo: {
+    alignItems: 'center',
+  },
   profileName: {
-    fontSize: Typography.fontSize.xxl,
+    fontSize: Typography.fontSize.xl,
     fontWeight: Typography.fontWeight.bold,
     color: Colors.text.primary,
     marginBottom: Spacing.xs,
     textAlign: 'center',
   },
   profileUsername: {
-    fontSize: Typography.fontSize.lg,
+    fontSize: Typography.fontSize.md,
     color: Colors.text.secondary,
     marginBottom: Spacing.md,
     fontWeight: Typography.fontWeight.medium,
+  },
+  roleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    flexWrap: 'wrap',
+    justifyContent: 'center',
   },
   roleBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: Colors.primary[50],
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.xs,
     borderRadius: BorderRadius.full,
-    marginBottom: Spacing.sm,
+  },
+  roleBadgeTasker: {
+    backgroundColor: Colors.success[50],
   },
   roleText: {
-    fontSize: Typography.fontSize.sm,
+    fontSize: Typography.fontSize.xs,
     fontWeight: Typography.fontWeight.semibold,
     color: Colors.primary[600],
     textTransform: 'capitalize',
     marginLeft: Spacing.xs,
   },
+  roleTextTasker: {
+    color: Colors.success[600],
+  },
   availabilityBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: Colors.success[50],
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.xs,
     borderRadius: BorderRadius.full,
   },
+  availabilityBadgeOffline: {
+    backgroundColor: Colors.error[50],
+  },
   availabilityDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
     marginRight: Spacing.xs,
   },
   availabilityText: {
-    fontSize: Typography.fontSize.sm,
+    fontSize: Typography.fontSize.xs,
     fontWeight: Typography.fontWeight.semibold,
     color: Colors.success[600],
+  },
+  availabilityTextOffline: {
+    color: Colors.error[600],
   },
   statsSection: {
     flexDirection: 'row',
@@ -1120,10 +1017,10 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.lg,
     marginHorizontal: Spacing.lg,
     shadowColor: Colors.shadow.medium,
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.1,
     shadowRadius: 8,
-    elevation: 2,
+    elevation: 4,
     borderWidth: 1,
     borderColor: Colors.border.light,
   },
@@ -1132,27 +1029,34 @@ const styles = StyleSheet.create({
     width: '30%',
     paddingHorizontal: Spacing.sm,
   },
+  statIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Colors.neutral[50],
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: Spacing.sm,
+  },
   statValue: {
-    fontSize: Typography.fontSize.xxl,
+    fontSize: Typography.fontSize.lg,
     fontWeight: Typography.fontWeight.bold,
-    color: Colors.primary[500],
+    color: Colors.text.primary,
     marginBottom: Spacing.xs,
   },
   statLabel: {
-    fontSize: Typography.fontSize.sm,
+    fontSize: Typography.fontSize.xs,
     color: Colors.text.secondary,
     textAlign: 'center',
   },
-  ratingStars: {
-    flexDirection: 'row',
-    marginTop: Spacing.xs,
-  },
-  card: {
-    backgroundColor: Colors.background.primary,
-    marginBottom: Spacing.lg,
-    borderRadius: BorderRadius.lg,
-    overflow: 'hidden',
+  sectionsContainer: {
     marginHorizontal: Spacing.lg,
+    marginBottom: Spacing.lg,
+  },
+  section: {
+    backgroundColor: Colors.background.primary,
+    borderRadius: BorderRadius.lg,
+    marginBottom: Spacing.md,
     shadowColor: Colors.shadow.medium,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
@@ -1161,49 +1065,42 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.border.light,
   },
-  cardHeader: {
+  sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.lg,
+    paddingVertical: Spacing.md,
     borderBottomWidth: 1,
     borderBottomColor: Colors.border.light,
     backgroundColor: Colors.background.secondary,
   },
-  cardContent: {
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.md,
-  },
-  cardTitle: {
-    fontSize: Typography.fontSize.lg,
+  sectionTitle: {
+    fontSize: Typography.fontSize.md,
     fontWeight: Typography.fontWeight.semibold,
     color: Colors.text.primary,
-    marginLeft: Spacing.md,
+    marginLeft: Spacing.sm,
   },
-  fieldRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.lg,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border.light,
-    gap: Spacing.md,
+  infoGrid: {
+    padding: Spacing.lg,
   },
-  fieldContainer: {
-    flex: 1,
+  infoItem: {
+    marginBottom: Spacing.md,
   },
-  fieldLabel: {
+  infoItemFull: {
+    width: '100%',
+  },
+  infoLabel: {
     fontSize: Typography.fontSize.sm,
     color: Colors.text.secondary,
     marginBottom: Spacing.xs,
     fontWeight: Typography.fontWeight.medium,
   },
-  fieldValue: {
+  infoValue: {
     fontSize: Typography.fontSize.md,
     color: Colors.text.primary,
     fontWeight: Typography.fontWeight.medium,
   },
-  input: {
+  infoInput: {
     borderWidth: 1,
     borderColor: Colors.border.light,
     borderRadius: BorderRadius.md,
@@ -1212,19 +1109,123 @@ const styles = StyleSheet.create({
     fontSize: Typography.fontSize.md,
     backgroundColor: Colors.background.secondary,
     color: Colors.text.primary,
-    marginTop: Spacing.xs,
   },
-  textArea: {
-    minHeight: 80,
+  infoTextArea: {
+    minHeight: 60,
     paddingTop: Spacing.sm,
     textAlignVertical: 'top',
+  },
+  actionsContainer: {
+    marginHorizontal: Spacing.lg,
+    marginBottom: Spacing.lg,
+  },
+  actionsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.md,
+  },
+  actionButton: {
+    flex: 1,
+    minWidth: (width - Spacing.lg * 2 - Spacing.md) / 2,
+    backgroundColor: Colors.background.primary,
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.lg,
+    alignItems: 'center',
+    shadowColor: Colors.shadow.medium,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 2,
+    borderWidth: 1,
+    borderColor: Colors.border.light,
+  },
+  actionIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: Colors.primary[50],
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: Spacing.sm,
+  },
+  actionButtonText: {
+    fontSize: Typography.fontSize.sm,
+    fontWeight: Typography.fontWeight.medium,
+    color: Colors.text.primary,
+    textAlign: 'center',
+  },
+  taskerSection: {
+    marginHorizontal: Spacing.lg,
+    marginBottom: Spacing.lg,
+  },
+  applicationStatus: {
+    backgroundColor: Colors.background.primary,
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.lg,
+    shadowColor: Colors.shadow.medium,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 2,
+    borderWidth: 1,
+    borderColor: Colors.border.light,
+  },
+  applicationStatusHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: Spacing.sm,
+  },
+  applicationStatusTitle: {
+    fontSize: Typography.fontSize.md,
+    fontWeight: Typography.fontWeight.semibold,
+    color: Colors.text.primary,
+    marginLeft: Spacing.sm,
+  },
+  reapplyButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.primary[500],
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    borderRadius: BorderRadius.md,
+    marginTop: Spacing.sm,
+    gap: Spacing.xs,
+  },
+  reapplyButtonText: {
+    color: Colors.text.inverse,
+    fontSize: Typography.fontSize.sm,
+    fontWeight: Typography.fontWeight.semibold,
+  },
+  becomeTaskerButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.primary[500],
+    paddingVertical: Spacing.lg,
+    borderRadius: BorderRadius.lg,
+    gap: Spacing.sm,
+    shadowColor: Colors.shadow.medium,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  becomeTaskerButtonText: {
+    color: Colors.text.inverse,
+    fontSize: Typography.fontSize.md,
+    fontWeight: Typography.fontWeight.semibold,
+  },
+  bottomActions: {
+    marginHorizontal: Spacing.lg,
+    marginBottom: Spacing.lg,
+    gap: Spacing.md,
   },
   skillsContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: Spacing.xs,
     marginTop: Spacing.sm,
-    paddingVertical: Spacing.xs,
   },
   skillChip: {
     backgroundColor: Colors.primary[50],
@@ -1233,7 +1234,6 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.full,
     borderWidth: 1,
     borderColor: Colors.primary[200],
-    marginBottom: Spacing.xs,
   },
   skillText: {
     fontSize: Typography.fontSize.xs,
@@ -1256,29 +1256,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: Spacing.sm,
   },
-  actionItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: Spacing.lg,
-    paddingHorizontal: Spacing.lg,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border.light,
-    backgroundColor: Colors.background.primary,
-  },
-  actionText: {
-    flex: 1,
-    fontSize: Typography.fontSize.md,
-    color: Colors.text.primary,
-    marginLeft: Spacing.md,
-    fontWeight: Typography.fontWeight.medium,
-    paddingVertical: Spacing.xs,
-  },
   saveButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: Colors.success[500],
-    margin: Spacing.lg,
     paddingVertical: Spacing.lg,
     borderRadius: BorderRadius.lg,
     gap: Spacing.sm,
@@ -1293,14 +1275,13 @@ const styles = StyleSheet.create({
   },
   saveButtonText: {
     color: Colors.text.inverse,
-    fontSize: Typography.fontSize.lg,
+    fontSize: Typography.fontSize.md,
     fontWeight: Typography.fontWeight.semibold,
   },
   signOutButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    margin: Spacing.lg,
     paddingVertical: Spacing.lg,
     backgroundColor: Colors.background.primary,
     borderRadius: BorderRadius.lg,
@@ -1315,222 +1296,7 @@ const styles = StyleSheet.create({
   },
   signOutText: {
     color: Colors.error[500],
-    fontSize: Typography.fontSize.lg,
-    fontWeight: Typography.fontWeight.semibold,
-  },
-  // Booking styles
-  errorContainer: {
-    padding: Spacing.lg,
-    alignItems: 'center',
-  },
-  errorText: {
-    fontSize: Typography.fontSize.sm,
-    color: Colors.error[500],
-    textAlign: 'center',
-  },
-  emptyContainer: {
-    padding: Spacing.xxxl,
-    alignItems: 'center',
-  },
-  emptyText: {
-    fontSize: Typography.fontSize.lg,
-    fontWeight: Typography.fontWeight.semibold,
-    color: Colors.neutral[500],
-    marginTop: Spacing.lg,
-    marginBottom: Spacing.sm,
-  },
-  emptySubtext: {
-    fontSize: Typography.fontSize.sm,
-    color: Colors.neutral[400],
-    textAlign: 'center',
-  },
-  bookingsList: {
-    paddingHorizontal: Spacing.lg,
-    paddingBottom: Spacing.lg,
-  },
-  bookingItem: {
-    backgroundColor: Colors.neutral[50],
-    borderRadius: BorderRadius.md,
-    padding: Spacing.lg,
-    marginBottom: Spacing.md,
-    borderWidth: 1,
-    borderColor: Colors.neutral[200],
-    shadowColor: Colors.shadow.light,
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
-  },
-  bookingHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: Spacing.sm,
-  },
-  bookingService: {
     fontSize: Typography.fontSize.md,
-    fontWeight: Typography.fontWeight.semibold,
-    color: Colors.text.primary,
-    flex: 1,
-  },
-  statusBadge: {
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: Spacing.xs,
-    borderRadius: BorderRadius.full,
-  },
-  statusText: {
-    fontSize: Typography.fontSize.xs,
-    fontWeight: Typography.fontWeight.semibold,
-    color: Colors.text.primary,
-    textTransform: 'capitalize',
-  },
-  bookingDate: {
-    fontSize: Typography.fontSize.sm,
-    color: Colors.text.secondary,
-    marginBottom: Spacing.xs,
-  },
-  bookingPrice: {
-    fontSize: Typography.fontSize.md,
-    fontWeight: Typography.fontWeight.semibold,
-    color: Colors.primary[500],
-    marginBottom: Spacing.xs,
-  },
-  bookingPerson: {
-    fontSize: Typography.fontSize.sm,
-    color: Colors.text.secondary,
-  },
-  viewAllButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: Spacing.lg,
-    borderTopWidth: 1,
-    borderTopColor: Colors.border.light,
-    marginTop: Spacing.md,
-  },
-  viewAllText: {
-    fontSize: Typography.fontSize.md,
-    fontWeight: Typography.fontWeight.semibold,
-    color: Colors.primary[500],
-    marginRight: Spacing.sm,
-  },
-  // New styles for Become a Tasker and Tasker Status
-  ratingCard: {
-    marginTop: Spacing.md,
-  },
-  becomeTaskerText: {
-    fontSize: Typography.fontSize.md,
-    color: Colors.text.secondary,
-    textAlign: 'center',
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.md,
-    lineHeight: 22,
-  },
-  becomeTaskerButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: Colors.primary[500],
-    paddingVertical: Spacing.md,
-    borderRadius: BorderRadius.md,
-    marginTop: Spacing.md,
-    gap: Spacing.sm,
-  },
-  becomeTaskerButtonText: {
-    color: Colors.text.inverse,
-    fontSize: Typography.fontSize.md,
-    fontWeight: Typography.fontWeight.semibold,
-  },
-  taskerStatusText: {
-    fontSize: Typography.fontSize.md,
-    color: Colors.success[600],
-    textAlign: 'center',
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.md,
-    lineHeight: 22,
-  },
-  taskerStats: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    marginTop: Spacing.md,
-    paddingVertical: Spacing.md,
-    borderTopWidth: 1,
-    borderTopColor: Colors.border.light,
-  },
-  taskerStat: {
-    alignItems: 'center',
-  },
-  taskerStatNumber: {
-    fontSize: Typography.fontSize.xl,
-    fontWeight: Typography.fontWeight.bold,
-    color: Colors.primary[500],
-  },
-  taskerStatLabel: {
-    fontSize: Typography.fontSize.sm,
-    color: Colors.text.secondary,
-    marginTop: Spacing.xs,
-  },
-  // Application status styles
-  applicationStatusContainer: {
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.md,
-  },
-  applicationStatusHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: Spacing.sm,
-  },
-  applicationStatusTitle: {
-    fontSize: Typography.fontSize.md,
-    fontWeight: Typography.fontWeight.semibold,
-    color: Colors.text.primary,
-    marginLeft: Spacing.sm,
-  },
-  applicationStatusText: {
-    fontSize: Typography.fontSize.sm,
-    color: Colors.text.secondary,
-    lineHeight: 20,
-    marginBottom: Spacing.sm,
-  },
-  applicationDate: {
-    fontSize: Typography.fontSize.xs,
-    color: Colors.text.tertiary,
-    fontStyle: 'italic',
-  },
-  rejectionReasonContainer: {
-    backgroundColor: Colors.error[50],
-    borderWidth: 1,
-    borderColor: Colors.error[200],
-    borderRadius: BorderRadius.md,
-    padding: Spacing.md,
-    marginTop: Spacing.sm,
-    marginBottom: Spacing.sm,
-  },
-  rejectionReasonTitle: {
-    fontSize: Typography.fontSize.sm,
-    fontWeight: Typography.fontWeight.semibold,
-    color: Colors.error[700],
-    marginBottom: Spacing.xs,
-  },
-  rejectionReasonText: {
-    fontSize: Typography.fontSize.sm,
-    color: Colors.error[600],
-    lineHeight: 18,
-  },
-  reapplyButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: Colors.primary[500],
-    paddingVertical: Spacing.sm,
-    paddingHorizontal: Spacing.md,
-    borderRadius: BorderRadius.md,
-    marginTop: Spacing.md,
-    gap: Spacing.xs,
-  },
-  reapplyButtonText: {
-    color: Colors.text.inverse,
-    fontSize: Typography.fontSize.sm,
     fontWeight: Typography.fontWeight.semibold,
   },
 })
